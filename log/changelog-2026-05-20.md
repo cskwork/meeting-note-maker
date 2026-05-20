@@ -1,5 +1,10 @@
 # Changelog - 2026-05-20
 
+## v1.0.0 release
+- Release: mark the Korean browser-local meeting-note maker as `v1.0.0`.
+- GitHub Pages: publish from `main` through the existing Pages workflow.
+- Repository metadata: include the GitHub Pages URL in both repo description and homepage.
+
 ## Korean STT default
 - Decision: set the browser-local STT default to `onnx-community/moonshine-tiny-ko-ONNX`.
 - Why: current Hugging Face model card exposes Transformers.js + ONNX usage, targets Korean ASR directly, and lists 27M parameters for constrained devices.
