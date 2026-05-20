@@ -56,9 +56,19 @@ type PipelineFn = (
   opts: AsrPipelineFactoryOpts,
 ) => Promise<AsrPipeline>;
 
-let recognizer: AsrPipeline | null = null;
+type QueuedTranscription = {
+  chunkId: string;
+  pcm: Float32Array;
+  sampleRate: number;
+  startMs: number;
+  endMs: number;
+};
+
+let asrPipeline: AsrPipeline | null = null;
 let activeLanguage: SttLanguage = 'ko';
 let activeModelId: SttModelId | null = null;
+let transcriptionQueue: QueuedTranscription[] = [];
+let transcriptionRunning = false;
 
 const post = (msg: SttWorkerOutbound) => (self as DedicatedWorkerGlobalScope).postMessage(msg);
 
@@ -96,15 +106,15 @@ async function load(modelId: SttModelId, language: SttLanguage) {
   // Single narrow cast: pipeline's published type signature is a giant union
   // we don't need. We only invoke it through AsrPipeline.
   try {
-    recognizer = await (pipeline as unknown as PipelineFn)(
+    asrPipeline = await (pipeline as unknown as PipelineFn)(
       'automatic-speech-recognition',
       modelId,
       factory,
     );
-    ensureMoonshineTokenizer(modelId, recognizer);
+    ensureMoonshineTokenizer(modelId, asrPipeline);
     post({ type: 'status', status: 'ready', message: `Loaded (${device}, ${dtype})` });
   } catch (e) {
-    recognizer = null;
+    asrPipeline = null;
     post({ type: 'error', error: formatLoadError(e) });
   }
 }
@@ -112,42 +122,74 @@ async function load(modelId: SttModelId, language: SttLanguage) {
 async function transcribe(
   chunkId: string,
   pcm: Float32Array,
-  _sampleRate: number,
+  sampleRate: number,
   startMs: number,
   endMs: number,
 ) {
-  if (!recognizer) {
+  transcriptionQueue.push({ chunkId, pcm, sampleRate, startMs, endMs });
+  void processTranscriptionQueue();
+}
+
+async function processTranscriptionQueue() {
+  if (transcriptionRunning) return;
+  const initialPipeline = asrPipeline;
+  if (!initialPipeline) {
     post({ type: 'error', error: 'Model not loaded' });
     return;
   }
-  post({ type: 'status', status: 'processing' });
+  transcriptionRunning = true;
   try {
-    const opts: AsrPipelineOptions = isMoonshineModel(activeModelId)
-      ? {}
-      : {
-          // Hallucination-suppression options for the transformers.js Whisper
-          // pipeline. Whisper-base on Korean is prone to outputting "- - - -",
-          // ellipses, or repeated tokens on silence/noise.
-          task: 'transcribe',
-          return_timestamps: false,
-          temperature: 0,
-          no_repeat_ngram_size: 3,
-          condition_on_previous_text: false,
-          no_speech_threshold: 0.6,
-          compression_ratio_threshold: 2.4,
-          logprob_threshold: -1.0,
-        };
-    if (!isMoonshineModel(activeModelId) && activeLanguage !== 'auto') opts.language = activeLanguage;
-    const out = await recognizer(pcm, opts);
+    while (transcriptionQueue.length > 0) {
+      const pipelineForChunk = asrPipeline;
+      if (!pipelineForChunk) break;
+      const next = transcriptionQueue.shift()!;
+      post({
+        type: 'status',
+        status: 'processing',
+        message: transcriptionQueue.length > 0 ? `queued ${transcriptionQueue.length}` : undefined,
+      });
+      await transcribeQueued(next, pipelineForChunk);
+    }
+  } finally {
+    transcriptionRunning = false;
+    if (asrPipeline) post({ type: 'status', status: 'listening' });
+  }
+}
+
+async function transcribeQueued({
+  chunkId,
+  pcm,
+  startMs,
+  endMs,
+}: QueuedTranscription, pipelineForChunk: AsrPipeline): Promise<void> {
+  try {
+    const opts = createAsrOptions();
+    const out = await pipelineForChunk(pcm, opts);
     const rawText = (Array.isArray(out) ? out[0]?.text : out.text) ?? '';
     const cleaned = scrubHallucination(rawText);
-    if (cleaned) {
-      post({ type: 'final', chunkId, text: cleaned, startMs, endMs });
-    }
-    post({ type: 'status', status: 'listening' });
+    if (cleaned) post({ type: 'final', chunkId, text: cleaned, startMs, endMs });
   } catch (e) {
     post({ type: 'error', error: e instanceof Error ? e.message : String(e) });
   }
+}
+
+function createAsrOptions(): AsrPipelineOptions {
+  if (isMoonshineModel(activeModelId)) return {};
+  const opts: AsrPipelineOptions = {
+    // Hallucination-suppression options for the transformers.js Whisper
+    // pipeline. Whisper-base on Korean is prone to outputting "- - - -",
+    // ellipses, or repeated tokens on silence/noise.
+    task: 'transcribe',
+    return_timestamps: false,
+    temperature: 0,
+    no_repeat_ngram_size: 3,
+    condition_on_previous_text: false,
+    no_speech_threshold: 0.6,
+    compression_ratio_threshold: 2.4,
+    logprob_threshold: -1.0,
+  };
+  if (activeLanguage !== 'auto') opts.language = activeLanguage;
+  return opts;
 }
 
 // Exported for the scrub-fixture unit test in scripts/verify-scrub.mjs.
@@ -276,7 +318,8 @@ self.onmessage = (e: MessageEvent<SttWorkerInbound>) => {
   } else if (msg.kind === 'transcribe') {
     void transcribe(msg.chunkId, msg.pcm, msg.sampleRate, msg.startMs, msg.endMs);
   } else if (msg.kind === 'dispose') {
-    recognizer = null;
+    asrPipeline = null;
+    transcriptionQueue = [];
     self.close();
   }
 };

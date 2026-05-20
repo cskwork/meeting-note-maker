@@ -14,6 +14,7 @@
 - Compatibility code kept for earlier Whisper experiments, but v1.0.0 UI exposes only Moonshine WASM CPU.
 - Runtime guard: Moonshine skips Whisper-only generation options.
 - Runtime change: force Moonshine to `wasm` + `q8` so the Korean ONNX model runs on CPU instead of the failing WebGPU decoder session.
+- WASM stability: queue STT chunks inside the worker and transcribe them serially so rolling long-speech chunks do not race the single WASM pipeline.
 - Capture change: consume VAD `onFrameProcessed` frames and emit rolling chunks during long continuous speech, instead of depending only on `onSpeechEnd`.
 - UI guard: worker load errors now move the app out of `loading` and into `error`, so controls are not permanently disabled.
 - Compatibility guard: attach the pipeline tokenizer to Moonshine's processor after load because the model metadata creates a feature-extractor-only processor while the Moonshine ASR path decodes through `processor.batch_decode`.
@@ -26,3 +27,4 @@
 - TTS progress fix: stream each ONNX model with `fetch`, report current-file bytes and percent, then create the ORT session from the downloaded buffer.
 - UX change: show overall percent, current-file percent, downloaded bytes, and a progress bar while Supertonic models load.
 - Cache fix: the direct Supertonic fetch path now checks CacheStorage before network and stores completed downloads, instead of relying only on service worker timing.
+- First-use fix: do not auto-initialize Supertonic on page load; start model loading only after the user clicks `▶ 듣기`, so the button is not disabled before first use.

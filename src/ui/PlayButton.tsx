@@ -28,8 +28,7 @@ function plainTextOf(note: MeetingNote): string {
 export function PlayButton({ note }: { note: MeetingNote }) {
   const [caps, setCaps] = useState<TtsCapability[]>([]);
   // Defaults come from persisted prefs (falls back to supertonic + F1) so the
-  // user's last TTS engine + voice survives reload. On first visit this still
-  // starts the supertonic download because that's the default.
+  // user's last TTS engine + voice survives reload without eager model loading.
   const initialPrefs = useState(() => loadPrefs())[0];
   const [engineId, setEngineId] = useState<TtsEngineId>(initialPrefs.ttsEngineId);
   const [voiceId, setVoiceId] = useState<string>(initialPrefs.ttsVoiceId);
@@ -61,15 +60,7 @@ export function PlayButton({ note }: { note: MeetingNote }) {
 
   useEffect(() => {
     detectCapabilities().then(setCaps);
-    // Auto-init whichever engine the user last picked (default supertonic).
-    // First-time supertonic load streams ~380MB from HF and primes SW cache.
-    void ensureEngine(initialPrefs.ttsEngineId).catch((e) => {
-      setLoading(null);
-      setError(e instanceof Error ? e.message : String(e));
-    });
     return () => engineRef.current?.dispose();
-    // ensureEngine intentionally not in deps — we only auto-init once on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

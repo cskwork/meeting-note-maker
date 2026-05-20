@@ -18,6 +18,7 @@ const checks = [
   ['model selector hides Whisper options', !files.app.includes("id: 'Xenova/whisper-base'") && !files.app.includes('whisper-large-v3-turbo')],
   ['Moonshine forces WASM CPU device', files.worker.includes('selectDevice(modelId)') && files.worker.includes("return 'wasm'")],
   ['Moonshine uses q8 CPU weights', files.worker.includes("return 'q8'")],
+  ['STT transcriptions are queued serially', files.worker.includes('transcriptionQueue') && files.worker.includes('processTranscriptionQueue')],
   ['long speech is force-flushed before silence', files.mic.includes('MAX_CONTINUOUS_SPEECH_MS') && files.mic.includes('onFrameProcessed')],
   ['long speech keeps boundary overlap', files.mic.includes('ROLLING_OVERLAP_MS') && files.mic.includes('takeTailFrames')],
   [
