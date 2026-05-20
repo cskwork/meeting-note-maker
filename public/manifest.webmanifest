@@ -1,0 +1,15 @@
+{
+  "name": "회의록 메이커",
+  "short_name": "회의록",
+  "description": "브라우저 안에서 끝나는 한국어 회의록 메이커",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "lang": "ko",
+  "orientation": "any",
+  "icons": [
+    { "src": "./icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "meeting-note-maker",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Privacy-first browser-local Korean meeting note maker (Whisper + supertonic-tts)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.0.2",
+    "@ricky0123/vad-web": "^0.0.22",
+    "idb-keyval": "^6.2.1",
+    "onnxruntime-web": "^1.26.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
+  }
+}

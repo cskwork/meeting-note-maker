@@ -1,0 +1,7 @@
+{
+  "goal": {
+    "objective": "Complete all ultragoal stories in .omc/ultragoal/goals.json: G001-foundation Foundation; G002-stt-engine STT Engine; G003-live-transcript-ui Live Transcript UI; G004-notes-structuring Notes Structuring; G005-export-pipeline Export Pipeline; G006-tts-playback TTS Playback; G007-github-pages-deploy GitHub Pages Deploy; G008-final-qa-release Final QA & Release",
+    "status": "active",
+    "context": "G008-final-qa-release completed: bkit:gap-detector matchRate=92 PASS M8 (>=90); bkit:code-analyzer 0 CRITICAL/0 HIGH; code-reviewer APPROVE_WITH_NITS; nit fixes applied (escapeHtml ', sw.js opaque cache removal, dead toMarkdown import, role=tablist a11y); bkit:report-generator emitted docs/04-report/completion-report.md. The original aggregate (G001-G008) is now satisfied. G009-supertonic-tts-activation remains pending separately and requires explicit user authorization for vendoring; the aggregate /goal stays active until G009 is either completed or removed from scope by user decision."
+  }
+}

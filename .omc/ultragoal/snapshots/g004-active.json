@@ -1,0 +1,7 @@
+{
+  "goal": {
+    "objective": "Complete all ultragoal stories in .omc/ultragoal/goals.json: G001-foundation Foundation; G002-stt-engine STT Engine; G003-live-transcript-ui Live Transcript UI; G004-notes-structuring Notes Structuring; G005-export-pipeline Export Pipeline; G006-tts-playback TTS Playback; G007-github-pages-deploy GitHub Pages Deploy; G008-final-qa-release Final QA & Release",
+    "status": "active",
+    "context": "G004-notes-structuring completed: notes/types (MeetingNote with schemaVersion+createdAt), notes/structurer (pure function, Korean sentence split, 30s-pause section break, action-item pattern detection), notes/storage (localStorage debounced save/load/clear), ui/NotesEditor (title/date/time/attendees/agenda/action items editing). App.tsx tab switch between transcript and notes, '전사→노트로 정리' button regenerates from chunks."
+  }
+}

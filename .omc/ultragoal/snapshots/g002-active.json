@@ -1,0 +1,7 @@
+{
+  "goal": {
+    "objective": "Complete all ultragoal stories in .omc/ultragoal/goals.json: G001-foundation Foundation; G002-stt-engine STT Engine; G003-live-transcript-ui Live Transcript UI; G004-notes-structuring Notes Structuring; G005-export-pipeline Export Pipeline; G006-tts-playback TTS Playback; G007-github-pages-deploy GitHub Pages Deploy; G008-final-qa-release Final QA & Release",
+    "status": "active",
+    "context": "G002-stt-engine completed: Vite+React+TS scaffold, @huggingface/transformers v3 Whisper worker (WebGPU with WASM fallback), MicCapture wrapping @ricky0123/vad-web silero-vad, streaming SttResult API (status|partial|final|error), minimal App.tsx demo harness with model selector + mic toggle + transcript view. typecheck PASS, vite build PASS (87 modules). Real-mic Korean verification deferred to G008 Zero Script QA."
+  }
+}

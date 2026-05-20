@@ -1,0 +1,15 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+.vscode
+.idea
+*.log
+.env*
+!.env.example
+
+# Local plugin / session state — not source-of-truth for the project
+.bkit/
+.claude/
+

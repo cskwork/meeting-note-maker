@@ -1,0 +1,7 @@
+{
+  "goal": {
+    "objective": "Complete all ultragoal stories in .omc/ultragoal/goals.json: G001-foundation Foundation; G002-stt-engine STT Engine; G003-live-transcript-ui Live Transcript UI; G004-notes-structuring Notes Structuring; G005-export-pipeline Export Pipeline; G006-tts-playback TTS Playback; G007-github-pages-deploy GitHub Pages Deploy; G008-final-qa-release Final QA & Release",
+    "status": "active",
+    "context": "G007-github-pages-deploy completed: public/manifest.webmanifest (standalone, ko, theme #0f172a, single SVG icon any+maskable), public/icon.svg (rounded-square 512x512 mic glyph), public/sw.js (network-first app shell, cache-first for huggingface CDN model assets), src/pwa.ts (BASE_URL-aware registration with HTTPS/localhost guard), index.html updated with manifest+icon+apple-touch-icon links, src/main.tsx calls registerPwa, vite.config.ts honors VITE_BASE env var, .github/workflows/deploy.yml official GitHub Pages Actions flow (build with VITE_BASE=/repo/, upload-pages-artifact + deploy-pages). README deployment section updated."
+  }
+}

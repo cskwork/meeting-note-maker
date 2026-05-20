@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="회의록 메이커">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <g fill="none" stroke="#f8fafc" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="216" y="120" width="80" height="160" rx="40"/>
+    <path d="M168 248c0 53 39 96 88 96s88-43 88-96"/>
+    <line x1="256" y1="344" x2="256" y2="400"/>
+    <line x1="208" y1="400" x2="304" y2="400"/>
+  </g>
+  <g fill="#f8fafc">
+    <circle cx="156" cy="172" r="6"/>
+    <circle cx="156" cy="208" r="6"/>
+    <circle cx="156" cy="244" r="6"/>
+    <circle cx="356" cy="172" r="6"/>
+    <circle cx="356" cy="208" r="6"/>
+    <circle cx="356" cy="244" r="6"/>
+  </g>
+</svg>

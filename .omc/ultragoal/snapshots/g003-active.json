@@ -1,0 +1,7 @@
+{
+  "goal": {
+    "objective": "Complete all ultragoal stories in .omc/ultragoal/goals.json: G001-foundation Foundation; G002-stt-engine STT Engine; G003-live-transcript-ui Live Transcript UI; G004-notes-structuring Notes Structuring; G005-export-pipeline Export Pipeline; G006-tts-playback TTS Playback; G007-github-pages-deploy GitHub Pages Deploy; G008-final-qa-release Final QA & Release",
+    "status": "active",
+    "context": "G003-live-transcript-ui completed: split App.tsx into ui/styles.ts + StatusPill + TranscriptView; mobile-first layout with 100dvh, env(safe-area-inset-bottom), Apple SD Gothic Neo; sticky bottom mic button; language selector (ko/en/auto); session reset; auto-scroll transcript with partial line in-place updates; iOS Safari mic permission error guidance."
+  }
+}
