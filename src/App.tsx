@@ -10,7 +10,13 @@ import { ExportBar } from './ui/ExportBar';
 import { PlayButton } from './ui/PlayButton';
 import { structureTranscript } from './notes/structurer';
 import { emptyMeetingNote, type MeetingNote, type TranscriptChunk } from './notes/types';
-import { clearDraft, loadDraft, makeDebouncedSaver } from './notes/storage';
+import {
+  clearDraft,
+  loadChunks,
+  loadDraft,
+  makeDebouncedChunkSaver,
+  makeDebouncedSaver,
+} from './notes/storage';
 
 const MODELS: { id: SttModelId; label: string; size: string }[] = [
   { id: 'Xenova/whisper-base', label: 'whisper-base (빠름)', size: '~80MB' },
@@ -35,7 +41,7 @@ export function App() {
   const [language, setLanguage] = useState<SttLanguage>('ko');
   const [status, setStatus] = useState<SttStatus>('idle');
   const [statusMsg, setStatusMsg] = useState<string>('');
-  const [chunks, setChunks] = useState<TranscriptChunk[]>([]);
+  const [chunks, setChunks] = useState<TranscriptChunk[]>(() => loadChunks());
   const [partialLine, setPartialLine] = useState<TranscriptLine | null>(null);
   const [note, setNote] = useState<MeetingNote>(() => loadDraft() ?? emptyMeetingNote());
   const [tab, setTab] = useState<Tab>('transcript');
@@ -46,8 +52,10 @@ export function App() {
   const sttRef = useRef<SttEngine | null>(null);
   const micRef = useRef<MicCapture | null>(null);
   const saveDraft = useMemo(() => makeDebouncedSaver(800), []);
+  const saveChunkDraft = useMemo(() => makeDebouncedChunkSaver(1500), []);
 
   useEffect(() => saveDraft(note), [note, saveDraft]);
+  useEffect(() => saveChunkDraft(chunks), [chunks, saveChunkDraft]);
 
   useEffect(() => {
     return () => {

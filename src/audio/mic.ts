@@ -27,17 +27,22 @@ export class MicCapture {
     if (this.vad) throw new Error('Already started');
     this.sessionStart = performance.now();
     this.vad = await MicVAD.new({
-      // silero-vad runs at 16k; vad-web resamples mic input to 16k
-      positiveSpeechThreshold: opts.positiveSpeechThreshold ?? 0.5,
-      negativeSpeechThreshold: opts.negativeSpeechThreshold ?? 0.35,
-      minSpeechFrames: opts.minSpeechFrames ?? 3,
-      redemptionFrames: opts.redemptionFrames ?? 12,
+      // silero-vad runs at 16k; vad-web resamples mic input to 16k.
+      // Defaults tuned to suppress Whisper hallucinations on short noise:
+      // longer minSpeechFrames and tighter thresholds reject coughs/clicks/breath.
+      positiveSpeechThreshold: opts.positiveSpeechThreshold ?? 0.6,
+      negativeSpeechThreshold: opts.negativeSpeechThreshold ?? 0.4,
+      minSpeechFrames: opts.minSpeechFrames ?? 9,
+      redemptionFrames: opts.redemptionFrames ?? 24,
       onSpeechStart: () => {
         this.speechStartMs = performance.now() - this.sessionStart;
         opts.onSpeechStart?.();
       },
       onSpeechEnd: (audio: Float32Array) => {
         const endMs = performance.now() - this.sessionStart;
+        // Drop segments shorter than 500ms (16k * 0.5 = 8000 samples) —
+        // Whisper hallucinates badly on very short audio.
+        if (audio.length < 8000) return;
         opts.onSpeechEnd({
           pcm: audio,
           sampleRate: 16000,
