@@ -28,3 +28,6 @@
 - UX change: show overall percent, current-file percent, downloaded bytes, and a progress bar while Supertonic models load.
 - Cache fix: the direct Supertonic fetch path now checks CacheStorage before network and stores completed downloads, instead of relying only on service worker timing.
 - First-use fix: do not auto-initialize Supertonic on page load; start model loading only after the user clicks `▶ 듣기`, so the button is not disabled before first use.
+- TTS control fix: never disable the listen control; it only toggles between `▶ 듣기` and `■ 멈춤`, including during model loading.
+- TTS stop fix: wire `멈춤` to abort in-flight Supertonic model downloads and suppress stale progress callbacks after stop.
+- TTS stop UX: hide download progress and unlock TTS selectors whenever playback is no longer active, so stale loading state cannot keep the UI looking busy after `멈춤`.

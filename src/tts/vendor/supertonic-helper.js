@@ -435,16 +435,18 @@ export async function loadTextProcessor(onnxDir) {
  */
 const MODEL_CACHE = 'mnm-model-v1';
 
-async function fetchArrayBufferWithProgress(url, progressCallback = null) {
+async function fetchArrayBufferWithProgress(url, progressCallback = null, signal = null) {
+    signal?.throwIfAborted?.();
     const cache = await openModelCache();
     const cached = cache ? await cache.match(url) : null;
     if (cached) {
+        signal?.throwIfAborted?.();
         const buffer = await cached.arrayBuffer();
         progressCallback?.(buffer.byteLength, buffer.byteLength);
         return buffer;
     }
 
-    const response = await fetch(url);
+    const response = await fetch(url, { signal });
     if (!response.ok) {
         throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`);
     }
@@ -464,6 +466,7 @@ async function fetchArrayBufferWithProgress(url, progressCallback = null) {
     let loaded = 0;
 
     while (true) {
+        signal?.throwIfAborted?.();
         const { done, value } = await reader.read();
         if (done) break;
         chunks.push(value);
@@ -510,8 +513,9 @@ function cacheModelBuffer(cache, url, buffer, sourceResponse) {
     cache.put(url, response).catch(() => {});
 }
 
-export async function loadOnnx(onnxPath, options, progressCallback = null) {
-    const modelBuffer = await fetchArrayBufferWithProgress(onnxPath, progressCallback);
+export async function loadOnnx(onnxPath, options, progressCallback = null, signal = null) {
+    const modelBuffer = await fetchArrayBufferWithProgress(onnxPath, progressCallback, signal);
+    signal?.throwIfAborted?.();
     const session = await ort.InferenceSession.create(modelBuffer, options);
     return session;
 }
@@ -519,7 +523,7 @@ export async function loadOnnx(onnxPath, options, progressCallback = null) {
 /**
  * Load all TTS components
  */
-export async function loadTextToSpeech(onnxDir, sessionOptions = {}, progressCallback = null) {
+export async function loadTextToSpeech(onnxDir, sessionOptions = {}, progressCallback = null, signal = null) {
     console.log('Using WebAssembly/WebGPU for inference');
     
     const cfgs = await loadCfgs(onnxDir);
@@ -538,6 +542,7 @@ export async function loadTextToSpeech(onnxDir, sessionOptions = {}, progressCal
     
     const sessions = [];
     for (let i = 0; i < modelPaths.length; i++) {
+        signal?.throwIfAborted?.();
         if (progressCallback) {
             progressCallback(modelPaths[i].name, i + 1, modelPaths.length, {
                 status: 'start',
@@ -555,7 +560,8 @@ export async function loadTextToSpeech(onnxDir, sessionOptions = {}, progressCal
                     progress: totalBytes > 0 ? (loadedBytes / totalBytes) * 100 : null
                 });
             }
-        });
+        }, signal);
+        signal?.throwIfAborted?.();
         if (progressCallback) {
             progressCallback(modelPaths[i].name, i + 1, modelPaths.length, {
                 status: 'done',

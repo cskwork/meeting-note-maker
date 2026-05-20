@@ -50,6 +50,7 @@ export class SupertonicTts implements TtsEngine {
   private audioCtx: AudioContext | null = null;
   private currentSource: AudioBufferSourceNode | null = null;
   private onProgress: SupertonicProgress | null = null;
+  private initAbortController: AbortController | null = null;
 
   setProgress(cb: SupertonicProgress | null): void {
     this.onProgress = cb;
@@ -77,12 +78,20 @@ export class SupertonicTts implements TtsEngine {
       detail?: SupertonicProgressDetail,
     ) => this.onProgress?.(`모델 다운로드: ${name}`, c, t, detail);
 
-    const { textToSpeech } = await helper.loadTextToSpeech(
-      ONNX_BASE,
-      sessionOptions,
-      onModelProgress,
-    );
-    this.tts = textToSpeech;
+    this.initAbortController = new AbortController();
+    const signal = this.initAbortController.signal;
+    try {
+      const { textToSpeech } = await helper.loadTextToSpeech(
+        ONNX_BASE,
+        sessionOptions,
+        onModelProgress,
+        signal,
+      );
+      if (signal.aborted) throw new DOMException('TTS initialization stopped', 'AbortError');
+      this.tts = textToSpeech;
+    } finally {
+      if (this.initAbortController?.signal === signal) this.initAbortController = null;
+    }
   }
 
   listVoices(_lang: string): TtsVoice[] {
@@ -121,6 +130,9 @@ export class SupertonicTts implements TtsEngine {
   }
 
   dispose(): void {
+    this.initAbortController?.abort();
+    this.initAbortController = null;
+    this.onProgress = null;
     this.stop();
     void this.audioCtx?.close();
     this.audioCtx = null;

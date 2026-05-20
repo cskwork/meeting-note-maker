@@ -49,6 +49,7 @@ export function loadTextToSpeech(
         },
       ) => void)
     | null,
+  signal?: AbortSignal | null,
 ): Promise<{ textToSpeech: TextToSpeech; cfgs: unknown }>;
 
 export function writeWavFile(audioData: number[] | Float32Array, sampleRate: number): ArrayBuffer;

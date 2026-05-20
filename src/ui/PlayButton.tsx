@@ -36,23 +36,26 @@ export function PlayButton({ note }: { note: MeetingNote }) {
   const [loading, setLoading] = useState<LoadingState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const engineRef = useRef<TtsEngine | null>(null);
+  const playRunRef = useRef(0);
 
   const ensureEngine = useCallback(
-    async (idOverride?: TtsEngineId): Promise<TtsEngine> => {
+    async (idOverride?: TtsEngineId, runId = playRunRef.current): Promise<TtsEngine> => {
       const id = idOverride ?? engineId;
       if (engineRef.current?.id === id) return engineRef.current;
       engineRef.current?.dispose();
       const next = makeEngine(id);
+      engineRef.current = next;
       if (next instanceof SupertonicTts) {
-        next.setProgress((phase, c, t, detail) => setLoading(formatTtsProgress(phase, c, t, detail)));
+        next.setProgress((phase, c, t, detail) => {
+          if (playRunRef.current === runId) setLoading(formatTtsProgress(phase, c, t, detail));
+        });
       }
-      setLoading({ message: '초기화 중...', percent: null });
+      if (playRunRef.current === runId) setLoading({ message: '초기화 중...', percent: null });
       try {
         await next.init();
       } finally {
-        setLoading(null);
+        if (playRunRef.current === runId) setLoading(null);
       }
-      engineRef.current = next;
       return next;
     },
     [engineId],
@@ -72,26 +75,36 @@ export function PlayButton({ note }: { note: MeetingNote }) {
 
   const onPlay = useCallback(async () => {
     setError(null);
+    setLoading(null);
     const text = plainTextOf(note);
     if (!text.trim()) {
       setError('재생할 노트 내용이 없습니다.');
       return;
     }
+    const runId = playRunRef.current + 1;
+    playRunRef.current = runId;
+    setPlaying(true);
     try {
-      const engine = await ensureEngine();
-      setPlaying(true);
+      const engine = await ensureEngine(undefined, runId);
+      if (playRunRef.current !== runId) return;
       await engine.speak(text, { lang: 'ko', voiceId, speed: 1.05 });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (playRunRef.current === runId) setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setPlaying(false);
-      setLoading(null);
+      if (playRunRef.current === runId) {
+        setPlaying(false);
+        setLoading(null);
+      }
     }
   }, [ensureEngine, voiceId, note]);
 
   const onStop = useCallback(() => {
-    engineRef.current?.stop();
+    playRunRef.current += 1;
+    if (engineRef.current instanceof SupertonicTts) engineRef.current.setProgress(null);
+    engineRef.current?.dispose();
+    engineRef.current = null;
     setPlaying(false);
+    setLoading(null);
   }, []);
 
   const showVoices = engineId === 'supertonic';
@@ -104,7 +117,7 @@ export function PlayButton({ note }: { note: MeetingNote }) {
           style={css.select}
           value={engineId}
           onChange={(e) => setEngineId(e.target.value as TtsEngineId)}
-          disabled={playing || loading !== null}
+          disabled={playing}
         >
           {caps.map((c) => (
             <option key={c.id} value={c.id} disabled={!c.available}>
@@ -121,7 +134,7 @@ export function PlayButton({ note }: { note: MeetingNote }) {
             style={css.select}
             value={voiceId}
             onChange={(e) => setVoiceId(e.target.value)}
-            disabled={playing || loading !== null}
+            disabled={playing}
           >
             <option value="F1">Mina (여)</option>
             <option value="F2">Sora (여)</option>
@@ -135,14 +148,10 @@ export function PlayButton({ note }: { note: MeetingNote }) {
       <button
         style={{ ...css.button, ...(playing ? {} : css.primary) }}
         onClick={playing ? onStop : onPlay}
-        disabled={
-          (note.agenda.length === 0 && note.actionItems.length === 0) ||
-          loading !== null
-        }
       >
-        {playing ? '■ 정지' : '▶ 듣기'}
+        {playing ? '■ 멈춤' : '▶ 듣기'}
       </button>
-      {loading && (
+      {playing && loading && (
         <div style={{ minWidth: 240, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={{ color: colors.muted, fontSize: 12 }}>{loading.message}</span>
           <div

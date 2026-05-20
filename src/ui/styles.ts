@@ -70,12 +70,12 @@ export const css = {
   primary: {
     background: colors.brand,
     color: colors.brandText,
-    borderColor: colors.brand,
+    border: `1px solid ${colors.brand}`,
   } satisfies CSSProperties,
   danger: {
     background: colors.danger,
     color: colors.brandText,
-    borderColor: colors.danger,
+    border: `1px solid ${colors.danger}`,
   } satisfies CSSProperties,
   pill: {
     display: 'inline-flex',
