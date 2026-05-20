@@ -22,6 +22,11 @@ import {
 import { loadPrefs, savePrefs } from './notes/prefs';
 
 const MODELS: { id: SttModelId; label: string; size: string }[] = [
+  {
+    id: 'onnx-community/moonshine-tiny-ko-ONNX',
+    label: 'moonshine-tiny-ko (한국어 최적화)',
+    size: '27M params · WebGPU/WASM',
+  },
   { id: 'Xenova/whisper-base', label: 'whisper-base (빠름)', size: '~80MB' },
   { id: 'Xenova/whisper-small', label: 'whisper-small (균형)', size: '~250MB' },
   {
@@ -122,6 +127,9 @@ export function App() {
     } else if (r.type === 'partial') {
       setPartialLine({ id: r.chunkId, text: r.text, startMs: 0, endMs: 0, isPartial: true });
     } else if (r.type === 'error') {
+      setStatus('error');
+      setStatusMsg('');
+      setModelLoaded(false);
       setError(r.error);
     }
   }, []);
@@ -135,6 +143,9 @@ export function App() {
       sttRef.current.on(handleStt);
       await sttRef.current.load(modelId, language);
     } catch (e) {
+      setStatus('error');
+      setStatusMsg('');
+      setModelLoaded(false);
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [modelId, language, handleStt]);

@@ -1,7 +1,9 @@
 import type { SttLanguage, SttModelId } from '../stt/types';
 import type { TtsEngineId } from '../tts/types';
 
-const KEY = 'mnm.prefs.v1';
+const KEY = 'mnm.prefs.v2';
+const LEGACY_KEY = 'mnm.prefs.v1';
+const LEGACY_DEFAULT_STT_MODEL: SttModelId = 'Xenova/whisper-base';
 
 export type Prefs = {
   sttModelId: SttModelId;
@@ -11,7 +13,7 @@ export type Prefs = {
 };
 
 const DEFAULTS: Prefs = {
-  sttModelId: 'Xenova/whisper-base',
+  sttModelId: 'onnx-community/moonshine-tiny-ko-ONNX',
   sttLanguage: 'ko',
   ttsEngineId: 'supertonic',
   ttsVoiceId: 'F1',
@@ -19,9 +21,12 @@ const DEFAULTS: Prefs = {
 
 export function loadPrefs(): Prefs {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw) as Partial<Prefs>;
+    if (parsed.sttModelId === LEGACY_DEFAULT_STT_MODEL) {
+      parsed.sttModelId = DEFAULTS.sttModelId;
+    }
     return { ...DEFAULTS, ...parsed };
   } catch {
     return DEFAULTS;

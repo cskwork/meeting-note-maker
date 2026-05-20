@@ -1,13 +1,17 @@
-export function downloadBlob(blob: Blob, filename: string): void {
+export function downloadBlob(blob: Blob, filename: string): string {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  a.rel = 'noopener';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // Revoke after a tick so the download starts
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return url;
+}
+
+export function revokeDownloadUrl(url: string): void {
+  URL.revokeObjectURL(url);
 }
 
 export function safeFilename(s: string): string {

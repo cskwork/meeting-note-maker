@@ -37,7 +37,17 @@ export function loadTextToSpeech(
   onnxDir: string,
   sessionOptions?: Record<string, unknown>,
   progressCallback?:
-    | ((name: string, current: number, total: number) => void)
+    | ((
+        name: string,
+        current: number,
+        total: number,
+        detail?: {
+          status: 'start' | 'progress' | 'done';
+          loadedBytes: number;
+          totalBytes: number;
+          progress: number | null;
+        },
+      ) => void)
     | null,
 ): Promise<{ textToSpeech: TextToSpeech; cfgs: unknown }>;
 

@@ -8,7 +8,7 @@
 | Styling | **Tailwind CSS 3** | mobile-first 유틸리티, 다크모드 자동, 번들 작음 |
 | State | **Zustand** | Redux 보일러플레이트 없이 worker ↔ UI 메시지 패턴에 적합 |
 | STT | **@huggingface/transformers v3** (구 `@xenova/transformers`) | WebGPU 지원, Whisper Korean 사전학습 잘 동작, 단일 npm 패키지로 워커 통합 |
-| STT model | `Xenova/whisper-base` (default), `onnx-community/whisper-large-v3-turbo` (optional) | base = 빠름·작음, large-v3-turbo = 정확도 우선 사용자용 |
+| STT model | `onnx-community/moonshine-tiny-ko-ONNX` (default), Whisper 계열 fallback | Moonshine tiny-ko = 한국어 전용·소형, Whisper = 범용/정확도 fallback |
 | VAD | `@ricky0123/vad-web` | ONNX silero-vad, WebGPU 외에 WASM도 빠름, 검증된 라이브러리 |
 | TTS | **cskwork/supertonic-tts** (필수, 사용자 지정) | WebGPU, 고품질, 사용자가 명시함 |
 | Storage | `idb-keyval` (IndexedDB) + `localStorage` | 모델·노트는 IndexedDB, 편집 드래프트는 localStorage |
@@ -20,19 +20,22 @@
 ## Rejected Alternatives
 - **SvelteKit**: 번들 더 작지만 transformers.js + WebGPU 예제 커뮤니티가 React보다 얕아 통합 리스크
 - **whisper.cpp WASM**: 검증되었으나 WebGPU 자체 지원 없음 → 미래성 제한
-- **Moonshine**: 빠르지만 한국어 학습 데이터/검증이 Whisper보다 약함
+- **Moonshine 범용 모델**: 당시에는 한국어 검증이 약했음. 현재는 `moonshine-tiny-ko-ONNX`가 한국어 전용 ONNX/Transformers.js 모델로 제공되어 기본값으로 채택.
 - **jsPDF 단독**: 1차 PDF로는 `window.print()`가 한글 폰트 처리 더 쉬움; jsPDF는 폴백
 - **MUI / Chakra**: 번들 크기 부담; Tailwind로 충분
 
 ## Korean STT 정확도 가이드 (G002 검증 대상)
-공개 벤치마크에 따르면 한국어 WER:
+현재 기본값:
+- `moonshine-tiny-ko-ONNX`: Korean ASR 전용, 27M parameters, WebGPU/WASM 가능
+
+Whisper fallback 가이드:
 - `whisper-tiny` ≈ 25-30% (사용 불가)
 - `whisper-base` ≈ 15-20% (실용 하한)
 - `whisper-small` ≈ 10-12% (균형)
 - `whisper-large-v3` / `large-v3-turbo` ≈ 6-9% (최상)
 
-기본 `whisper-base`로 시작, UI에서 "정확도 우선" 토글로 `large-v3-turbo`
-다운로드 옵션 제공. 모델 크기:
+UI에서 한국어 최적화 기본값과 Whisper fallback 다운로드 옵션 제공. 모델 크기:
+- moonshine-tiny-ko ≈ 27M params
 - base ≈ 80MB
 - small ≈ 250MB
 - large-v3-turbo ≈ 800MB (WebGPU 권장)

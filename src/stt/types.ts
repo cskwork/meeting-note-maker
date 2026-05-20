@@ -1,6 +1,7 @@
 export type SttLanguage = 'ko' | 'en' | 'auto';
 
 export type SttModelId =
+  | 'onnx-community/moonshine-tiny-ko-ONNX'
   | 'Xenova/whisper-base'
   | 'Xenova/whisper-small'
   | 'onnx-community/whisper-large-v3-turbo';

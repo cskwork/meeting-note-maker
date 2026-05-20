@@ -8,8 +8,8 @@ dist-ssr
 *.log
 .env*
 !.env.example
+.playwright-mcp/
 
 # Local plugin / session state — not source-of-truth for the project
 .bkit/
 .claude/
-

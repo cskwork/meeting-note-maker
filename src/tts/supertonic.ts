@@ -3,6 +3,10 @@ import type {
   Style as SupertonicStyle,
   TextToSpeech as SupertonicTtsInstance,
 } from './vendor/supertonic-helper';
+import ortJsepMjsUrl from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.mjs?url';
+import ortJsepWasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm?url';
+import ortWasmMjsUrl from 'onnxruntime-web/ort-wasm-simd-threaded.mjs?url';
+import ortWasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url';
 
 /**
  * Supertonic-TTS engine wrapper. Lazy-loads onnxruntime-web and the vendored
@@ -25,7 +29,19 @@ const VOICES: TtsVoice[] = [
   { id: 'M3', label: 'Leo (남성)', lang: 'ko' },
 ];
 
-export type SupertonicProgress = (phase: string, current: number, total: number) => void;
+export type SupertonicProgressDetail = {
+  status: 'start' | 'progress' | 'done';
+  loadedBytes: number;
+  totalBytes: number;
+  progress: number | null;
+};
+
+export type SupertonicProgress = (
+  phase: string,
+  current: number,
+  total: number,
+  detail?: SupertonicProgressDetail,
+) => void;
 
 export class SupertonicTts implements TtsEngine {
   readonly id = 'supertonic' as const;
@@ -45,16 +61,21 @@ export class SupertonicTts implements TtsEngine {
       import('./vendor/supertonic-helper'),
       import('onnxruntime-web'),
     ]);
-    helper.configureOrt(ort);
 
     const device = (await detectWebGpu()) ? 'webgpu' : 'wasm';
+    configureOrtAssets(ort, device);
+    helper.configureOrt(ort);
     const sessionOptions = {
       executionProviders: [device],
       graphOptimizationLevel: 'all',
     } as Record<string, unknown>;
 
-    const onModelProgress = (name: string, c: number, t: number) =>
-      this.onProgress?.(`모델 다운로드: ${name}`, c, t);
+    const onModelProgress = (
+      name: string,
+      c: number,
+      t: number,
+      detail?: SupertonicProgressDetail,
+    ) => this.onProgress?.(`모델 다운로드: ${name}`, c, t, detail);
 
     const { textToSpeech } = await helper.loadTextToSpeech(
       ONNX_BASE,
@@ -130,6 +151,18 @@ export class SupertonicTts implements TtsEngine {
       src.start();
     });
   }
+}
+
+function configureOrtAssets(ort: typeof import('onnxruntime-web'), device: 'webgpu' | 'wasm'): void {
+  const env = ort.env as {
+    wasm: {
+      wasmPaths?: { mjs: string; wasm: string };
+    };
+  };
+  env.wasm.wasmPaths =
+    device === 'webgpu'
+      ? { mjs: ortJsepMjsUrl, wasm: ortJsepWasmUrl }
+      : { mjs: ortWasmMjsUrl, wasm: ortWasmUrl };
 }
 
 export async function detectWebGpu(): Promise<boolean> {

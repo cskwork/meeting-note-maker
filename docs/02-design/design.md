@@ -87,7 +87,7 @@ type MeetingNote = {
 3. VAD (간단한 RMS 임계값 + hangover) → speech segment 경계 결정
 4. STT Worker로 segment 전송
 5. Worker 내부: `pipeline('automatic-speech-recognition', model)` 호출
-   - `model`: 기본 `Xenova/whisper-base` → 옵션 `onnx-community/whisper-large-v3-turbo`
+   - `model`: 기본 `onnx-community/moonshine-tiny-ko-ONNX` → fallback `Xenova/whisper-base`, `Xenova/whisper-small`, `onnx-community/whisper-large-v3-turbo`
    - `device`: `'webgpu'` 우선, 없으면 `'wasm'`
    - `language`: `'ko'` 기본, UI에서 변경 가능
    - `return_timestamps: 'word'`

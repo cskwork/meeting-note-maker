@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:stt-models": "node scripts/verify-stt-models.mjs",
+    "verify:tts-runtime": "node scripts/verify-tts-runtime.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.0.2",

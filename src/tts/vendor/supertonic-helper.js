@@ -433,8 +433,44 @@ export async function loadTextProcessor(onnxDir) {
 /**
  * Load ONNX model
  */
-export async function loadOnnx(onnxPath, options) {
-    const session = await ort.InferenceSession.create(onnxPath, options);
+async function fetchArrayBufferWithProgress(url, progressCallback = null) {
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`);
+    }
+
+    const total = Number(response.headers.get('content-length') || 0);
+    if (!response.body) {
+        const buffer = await response.arrayBuffer();
+        progressCallback?.(buffer.byteLength, buffer.byteLength);
+        return buffer;
+    }
+
+    const reader = response.body.getReader();
+    const chunks = [];
+    let loaded = 0;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.byteLength;
+        progressCallback?.(loaded, total);
+    }
+
+    const bytes = new Uint8Array(loaded);
+    let offset = 0;
+    for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    progressCallback?.(loaded, total || loaded);
+    return bytes.buffer;
+}
+
+export async function loadOnnx(onnxPath, options, progressCallback = null) {
+    const modelBuffer = await fetchArrayBufferWithProgress(onnxPath, progressCallback);
+    const session = await ort.InferenceSession.create(modelBuffer, options);
     return session;
 }
 
@@ -461,9 +497,31 @@ export async function loadTextToSpeech(onnxDir, sessionOptions = {}, progressCal
     const sessions = [];
     for (let i = 0; i < modelPaths.length; i++) {
         if (progressCallback) {
-            progressCallback(modelPaths[i].name, i + 1, modelPaths.length);
+            progressCallback(modelPaths[i].name, i + 1, modelPaths.length, {
+                status: 'start',
+                loadedBytes: 0,
+                totalBytes: 0,
+                progress: 0
+            });
         }
-        const session = await loadOnnx(modelPaths[i].path, sessionOptions);
+        const session = await loadOnnx(modelPaths[i].path, sessionOptions, (loadedBytes, totalBytes) => {
+            if (progressCallback) {
+                progressCallback(modelPaths[i].name, i + 1, modelPaths.length, {
+                    status: 'progress',
+                    loadedBytes,
+                    totalBytes,
+                    progress: totalBytes > 0 ? (loadedBytes / totalBytes) * 100 : null
+                });
+            }
+        });
+        if (progressCallback) {
+            progressCallback(modelPaths[i].name, i + 1, modelPaths.length, {
+                status: 'done',
+                loadedBytes: 1,
+                totalBytes: 1,
+                progress: 100
+            });
+        }
         sessions.push(session);
     }
     

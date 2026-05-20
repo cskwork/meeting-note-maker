@@ -2,9 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MeetingNote } from '../notes/types';
 import type { TtsCapability, TtsEngine, TtsEngineId } from '../tts/types';
 import { detectCapabilities, makeEngine } from '../tts/engine';
-import { SupertonicTts } from '../tts/supertonic';
+import { SupertonicTts, type SupertonicProgressDetail } from '../tts/supertonic';
 import { loadPrefs, savePrefs } from '../notes/prefs';
 import { css, colors } from './styles';
+
+type LoadingState = {
+  message: string;
+  percent: number | null;
+  detail?: string;
+};
 
 function plainTextOf(note: MeetingNote): string {
   const parts: string[] = [note.title];
@@ -28,7 +34,7 @@ export function PlayButton({ note }: { note: MeetingNote }) {
   const [engineId, setEngineId] = useState<TtsEngineId>(initialPrefs.ttsEngineId);
   const [voiceId, setVoiceId] = useState<string>(initialPrefs.ttsVoiceId);
   const [playing, setPlaying] = useState(false);
-  const [loadingMsg, setLoadingMsg] = useState<string | null>(null);
+  const [loading, setLoading] = useState<LoadingState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const engineRef = useRef<TtsEngine | null>(null);
 
@@ -39,15 +45,13 @@ export function PlayButton({ note }: { note: MeetingNote }) {
       engineRef.current?.dispose();
       const next = makeEngine(id);
       if (next instanceof SupertonicTts) {
-        next.setProgress((phase, c, t) =>
-          setLoadingMsg(`${phase} (${c}/${t})`),
-        );
+        next.setProgress((phase, c, t, detail) => setLoading(formatTtsProgress(phase, c, t, detail)));
       }
-      setLoadingMsg('초기화 중...');
+      setLoading({ message: '초기화 중...', percent: null });
       try {
         await next.init();
       } finally {
-        setLoadingMsg(null);
+        setLoading(null);
       }
       engineRef.current = next;
       return next;
@@ -60,7 +64,7 @@ export function PlayButton({ note }: { note: MeetingNote }) {
     // Auto-init whichever engine the user last picked (default supertonic).
     // First-time supertonic load streams ~380MB from HF and primes SW cache.
     void ensureEngine(initialPrefs.ttsEngineId).catch((e) => {
-      setLoadingMsg(null);
+      setLoading(null);
       setError(e instanceof Error ? e.message : String(e));
     });
     return () => engineRef.current?.dispose();
@@ -90,7 +94,7 @@ export function PlayButton({ note }: { note: MeetingNote }) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setPlaying(false);
-      setLoadingMsg(null);
+      setLoading(null);
     }
   }, [ensureEngine, voiceId, note]);
 
@@ -109,7 +113,7 @@ export function PlayButton({ note }: { note: MeetingNote }) {
           style={css.select}
           value={engineId}
           onChange={(e) => setEngineId(e.target.value as TtsEngineId)}
-          disabled={playing || loadingMsg !== null}
+          disabled={playing || loading !== null}
         >
           {caps.map((c) => (
             <option key={c.id} value={c.id} disabled={!c.available}>
@@ -126,7 +130,7 @@ export function PlayButton({ note }: { note: MeetingNote }) {
             style={css.select}
             value={voiceId}
             onChange={(e) => setVoiceId(e.target.value)}
-            disabled={playing || loadingMsg !== null}
+            disabled={playing || loading !== null}
           >
             <option value="F1">Mina (여)</option>
             <option value="F2">Sora (여)</option>
@@ -142,13 +146,39 @@ export function PlayButton({ note }: { note: MeetingNote }) {
         onClick={playing ? onStop : onPlay}
         disabled={
           (note.agenda.length === 0 && note.actionItems.length === 0) ||
-          loadingMsg !== null
+          loading !== null
         }
       >
         {playing ? '■ 정지' : '▶ 듣기'}
       </button>
-      {loadingMsg && <span style={{ color: colors.muted, fontSize: 12 }}>{loadingMsg}</span>}
-      {!loadingMsg && caps.find((c) => c.id === engineId)?.reason && (
+      {loading && (
+        <div style={{ minWidth: 240, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ color: colors.muted, fontSize: 12 }}>{loading.message}</span>
+          <div
+            aria-label="TTS 모델 다운로드 진행률"
+            style={{
+              width: 240,
+              height: 6,
+              borderRadius: 999,
+              overflow: 'hidden',
+              background: '#e5e7eb',
+            }}
+          >
+            <div
+              style={{
+                width: `${loading.percent ?? 8}%`,
+                minWidth: loading.percent === null ? 24 : 0,
+                height: '100%',
+                borderRadius: 999,
+                background: colors.brand,
+                transition: 'width 160ms ease',
+              }}
+            />
+          </div>
+          {loading.detail && <span style={{ color: colors.muted, fontSize: 11 }}>{loading.detail}</span>}
+        </div>
+      )}
+      {!loading && caps.find((c) => c.id === engineId)?.reason && (
         <span style={{ color: colors.muted, fontSize: 12 }}>
           {caps.find((c) => c.id === engineId)!.reason}
         </span>
@@ -156,4 +186,40 @@ export function PlayButton({ note }: { note: MeetingNote }) {
       {error && <span style={{ color: '#dc2626', fontSize: 13 }}>{error}</span>}
     </div>
   );
+}
+
+function formatTtsProgress(
+  phase: string,
+  current: number,
+  total: number,
+  detail?: SupertonicProgressDetail,
+): LoadingState {
+  const filePercent = detail?.progress;
+  const completedFiles = Math.max(0, current - 1);
+  const overallPercent =
+    filePercent === null || filePercent === undefined
+      ? (current / total) * 100
+      : ((completedFiles + filePercent / 100) / total) * 100;
+  const roundedOverall = clampPercent(overallPercent);
+  const fileSuffix =
+    typeof filePercent === 'number' ? `, 현재 파일 ${Math.round(filePercent)}%` : '';
+
+  return {
+    message: `${phase} (${current}/${total}, 전체 ${roundedOverall}%${fileSuffix})`,
+    percent: roundedOverall,
+    detail:
+      detail && detail.totalBytes > 0
+        ? `${formatBytes(detail.loadedBytes)} / ${formatBytes(detail.totalBytes)}`
+        : '파일 크기 확인 중...',
+  };
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }

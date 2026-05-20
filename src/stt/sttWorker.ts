@@ -29,9 +29,24 @@ interface AsrPipeline {
   >;
 }
 
+interface MoonshinePipelineWithTokenizer extends AsrPipeline {
+  tokenizer?: {
+    batch_decode?: (...args: unknown[]) => unknown;
+    decode?: (...args: unknown[]) => unknown;
+  };
+  processor?: {
+    components?: {
+      tokenizer?: unknown;
+    };
+    tokenizer?: unknown;
+    batch_decode?: (...args: unknown[]) => unknown;
+    decode?: (...args: unknown[]) => unknown;
+  };
+}
+
 interface AsrPipelineFactoryOpts {
   device: 'webgpu' | 'wasm';
-  dtype: 'fp16' | 'fp32';
+  dtype: 'fp16' | 'fp32' | 'q4f16' | 'q8';
   progress_callback?: (p: unknown) => void;
 }
 
@@ -43,6 +58,7 @@ type PipelineFn = (
 
 let recognizer: AsrPipeline | null = null;
 let activeLanguage: SttLanguage = 'ko';
+let activeModelId: SttModelId | null = null;
 
 const post = (msg: SttWorkerOutbound) => (self as DedicatedWorkerGlobalScope).postMessage(msg);
 
@@ -60,10 +76,12 @@ async function detectDevice(): Promise<'webgpu' | 'wasm'> {
 async function load(modelId: SttModelId, language: SttLanguage) {
   post({ type: 'status', status: 'loading', message: `Loading ${modelId}...` });
   activeLanguage = language;
-  const device = await detectDevice();
+  activeModelId = modelId;
+  const device = await selectDevice(modelId);
+  const dtype = selectDtype(modelId, device);
   const factory: AsrPipelineFactoryOpts = {
     device,
-    dtype: device === 'webgpu' ? 'fp16' : 'fp32',
+    dtype,
     progress_callback: (p: unknown) => {
       const ev = p as { status?: string; file?: string; progress?: number };
       if (ev.status === 'progress' && typeof ev.progress === 'number') {
@@ -77,12 +95,18 @@ async function load(modelId: SttModelId, language: SttLanguage) {
   };
   // Single narrow cast: pipeline's published type signature is a giant union
   // we don't need. We only invoke it through AsrPipeline.
-  recognizer = await (pipeline as unknown as PipelineFn)(
-    'automatic-speech-recognition',
-    modelId,
-    factory,
-  );
-  post({ type: 'status', status: 'ready', message: `Loaded (${device})` });
+  try {
+    recognizer = await (pipeline as unknown as PipelineFn)(
+      'automatic-speech-recognition',
+      modelId,
+      factory,
+    );
+    ensureMoonshineTokenizer(modelId, recognizer);
+    post({ type: 'status', status: 'ready', message: `Loaded (${device}, ${dtype})` });
+  } catch (e) {
+    recognizer = null;
+    post({ type: 'error', error: formatLoadError(e) });
+  }
 }
 
 async function transcribe(
@@ -98,21 +122,22 @@ async function transcribe(
   }
   post({ type: 'status', status: 'processing' });
   try {
-    // Hallucination-suppression options for the transformers.js Whisper
-    // pipeline. Whisper-base on Korean is prone to outputting "- - - -",
-    // ellipses, or repeated tokens on silence/noise. The thresholds + greedy
-    // temperature + no-prompt-conditioning make the worst cases far rarer.
-    const opts: AsrPipelineOptions = {
-      task: 'transcribe',
-      return_timestamps: false,
-      temperature: 0,
-      no_repeat_ngram_size: 3,
-      condition_on_previous_text: false,
-      no_speech_threshold: 0.6,
-      compression_ratio_threshold: 2.4,
-      logprob_threshold: -1.0,
-    };
-    if (activeLanguage !== 'auto') opts.language = activeLanguage;
+    const opts: AsrPipelineOptions = isMoonshineModel(activeModelId)
+      ? {}
+      : {
+          // Hallucination-suppression options for the transformers.js Whisper
+          // pipeline. Whisper-base on Korean is prone to outputting "- - - -",
+          // ellipses, or repeated tokens on silence/noise.
+          task: 'transcribe',
+          return_timestamps: false,
+          temperature: 0,
+          no_repeat_ngram_size: 3,
+          condition_on_previous_text: false,
+          no_speech_threshold: 0.6,
+          compression_ratio_threshold: 2.4,
+          logprob_threshold: -1.0,
+        };
+    if (!isMoonshineModel(activeModelId) && activeLanguage !== 'auto') opts.language = activeLanguage;
     const out = await recognizer(pcm, opts);
     const rawText = (Array.isArray(out) ? out[0]?.text : out.text) ?? '';
     const cleaned = scrubHallucination(rawText);
@@ -205,6 +230,41 @@ function mostCommon(arr: string[]): { ch: string; count: number } {
   let best = { ch: '', count: 0 };
   for (const [ch, count] of m) if (count > best.count) best = { ch, count };
   return best;
+}
+
+function isMoonshineModel(modelId: SttModelId | null): boolean {
+  return modelId === 'onnx-community/moonshine-tiny-ko-ONNX';
+}
+
+async function selectDevice(modelId: SttModelId): Promise<'webgpu' | 'wasm'> {
+  if (isMoonshineModel(modelId)) return 'wasm';
+  return detectDevice();
+}
+
+function selectDtype(modelId: SttModelId, device: 'webgpu' | 'wasm'): AsrPipelineFactoryOpts['dtype'] {
+  if (isMoonshineModel(modelId)) {
+    return 'q8';
+  }
+  return device === 'webgpu' ? 'fp16' : 'fp32';
+}
+
+function ensureMoonshineTokenizer(modelId: SttModelId, asr: AsrPipeline): void {
+  if (!isMoonshineModel(modelId)) return;
+  const moonshine = asr as MoonshinePipelineWithTokenizer;
+  if (!moonshine.processor || !moonshine.tokenizer) return;
+  if (!moonshine.processor.tokenizer && !moonshine.processor.components?.tokenizer) {
+    moonshine.processor.components ??= {};
+    moonshine.processor.components.tokenizer = moonshine.tokenizer;
+  }
+  moonshine.processor.batch_decode ??= (...args: unknown[]) =>
+    moonshine.tokenizer?.batch_decode?.(...args);
+  moonshine.processor.decode ??= (...args: unknown[]) =>
+    moonshine.tokenizer?.decode?.(...args);
+}
+
+function formatLoadError(e: unknown): string {
+  const detail = e instanceof Error ? e.message : String(e);
+  return `STT 모델 로드 실패: ${detail}`;
 }
 
 self.onmessage = (e: MessageEvent<SttWorkerInbound>) => {
