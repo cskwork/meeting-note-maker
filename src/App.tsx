@@ -151,13 +151,27 @@ export function App() {
   }, [chunks]);
 
   const onReset = useCallback(async () => {
+    const hasContent =
+      chunks.length > 0 ||
+      note.agenda.length > 0 ||
+      note.actionItems.length > 0 ||
+      note.attendees.length > 0 ||
+      (note.title && !note.title.startsWith('회의록 '));
+    if (hasContent) {
+      const ok = window.confirm(
+        '회의록과 실시간 전사 내용을 모두 삭제합니다.\n' +
+          '저장된 초안(localStorage)도 함께 지워집니다.\n\n' +
+          '계속하시겠습니까?',
+      );
+      if (!ok) return;
+    }
     if (micRef.current?.running) await stopMic();
     setChunks([]);
     setPartialLine(null);
     setError(null);
     clearDraft();
     setNote(emptyMeetingNote());
-  }, [stopMic]);
+  }, [chunks.length, note.agenda.length, note.actionItems.length, note.attendees.length, note.title, stopMic]);
 
   const transcriptLines: TranscriptLine[] = useMemo(() => {
     const final = chunks.map((c) => ({
@@ -231,11 +245,12 @@ export function App() {
             전사 → 노트로 정리
           </button>
           <button
-            style={css.button}
+            style={{ ...css.button, ...(chunks.length > 0 || note.agenda.length > 0 ? css.danger : {}) }}
             onClick={onReset}
             disabled={chunks.length === 0 && !micRunning && note.agenda.length === 0}
+            title="실시간 전사 + 회의록 + localStorage 초안을 모두 삭제"
           >
-            세션 초기화
+            회의록 전체 초기화
           </button>
           <div style={{ marginLeft: 'auto' }}>
             <StatusPill status={status} message={statusMsg} />

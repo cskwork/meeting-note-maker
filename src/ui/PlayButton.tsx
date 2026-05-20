@@ -20,36 +20,52 @@ function plainTextOf(note: MeetingNote): string {
 
 export function PlayButton({ note }: { note: MeetingNote }) {
   const [caps, setCaps] = useState<TtsCapability[]>([]);
-  const [engineId, setEngineId] = useState<TtsEngineId>('webspeech');
+  // Default to supertonic so the high-quality model starts downloading
+  // immediately on first visit. Subsequent visits hit the SW model cache.
+  const [engineId, setEngineId] = useState<TtsEngineId>('supertonic');
   const [voiceId, setVoiceId] = useState<string>('F1');
   const [playing, setPlaying] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const engineRef = useRef<TtsEngine | null>(null);
 
+  const ensureEngine = useCallback(
+    async (idOverride?: TtsEngineId): Promise<TtsEngine> => {
+      const id = idOverride ?? engineId;
+      if (engineRef.current?.id === id) return engineRef.current;
+      engineRef.current?.dispose();
+      const next = makeEngine(id);
+      if (next instanceof SupertonicTts) {
+        next.setProgress((phase, c, t) =>
+          setLoadingMsg(`${phase} (${c}/${t})`),
+        );
+      }
+      setLoadingMsg('초기화 중...');
+      try {
+        await next.init();
+      } finally {
+        setLoadingMsg(null);
+      }
+      engineRef.current = next;
+      return next;
+    },
+    [engineId],
+  );
+
   useEffect(() => {
     detectCapabilities().then(setCaps);
-    return () => engineRef.current?.dispose();
-  }, []);
-
-  const ensureEngine = useCallback(async (): Promise<TtsEngine> => {
-    if (engineRef.current?.id === engineId) return engineRef.current;
-    engineRef.current?.dispose();
-    const next = makeEngine(engineId);
-    if (next instanceof SupertonicTts) {
-      next.setProgress((phase, c, t) =>
-        setLoadingMsg(`${phase} (${c}/${t})`),
-      );
-    }
-    setLoadingMsg('초기화 중...');
-    try {
-      await next.init();
-    } finally {
+    // Kick off supertonic-tts model download on mount so the heavy ~380MB
+    // weights start streaming while the user reads the page. First-time
+    // download silently primes the SW cache; if anything fails the user can
+    // still pick Web Speech from the engine selector.
+    void ensureEngine('supertonic').catch((e) => {
       setLoadingMsg(null);
-    }
-    engineRef.current = next;
-    return next;
-  }, [engineId]);
+      setError(e instanceof Error ? e.message : String(e));
+    });
+    return () => engineRef.current?.dispose();
+    // ensureEngine intentionally not in deps — we only auto-init once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onPlay = useCallback(async () => {
     setError(null);
