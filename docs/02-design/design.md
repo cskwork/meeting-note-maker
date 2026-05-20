@@ -23,8 +23,8 @@
 |  +---------v-----------+                |                |
 |  | STT Worker          |<---------------+                |
 |  | transformers.js     |                                 |
-|  |  Whisper + WebGPU   |    +------------------------+   |
-|  |  (WASM fallback)    |--->| Export Pipeline        |   |
+|  |  Moonshine Korean   |    +------------------------+   |
+|  |  (WASM CPU)         |--->| Export Pipeline        |   |
 |  +---------------------+    |  - HTML (template)     |   |
 |                             |  - Markdown (marked)   |   |
 |                             |  - PDF (jsPDF/print)   |   |
@@ -50,7 +50,7 @@
 | Module | Responsibility | Test Boundary |
 |--------|----------------|---------------|
 | `mic` | getUserMedia, PCM 16kHz mono 스트림 + VAD 이벤트 | unit (mocked AudioContext) |
-| `stt` | Web Worker가 transformers.js Whisper 호출, partial/final 결과 emit | unit (worker contract) + integration (real audio fixture) |
+| `stt` | Web Worker가 transformers.js Moonshine Korean WASM 호출, partial/final 결과 emit | unit (worker contract) + integration (real audio fixture) |
 | `notes` | raw transcript → 구조화된 MeetingNote 객체 변환 | unit (pure function) |
 | `editor` | React 컨트롤드 컴포넌트, localStorage 저장 | component test |
 | `export` | MeetingNote → HTML/MD/PDF 변환 + Blob 다운로드 | unit (snapshot) |
@@ -85,13 +85,16 @@ type MeetingNote = {
 1. `getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } })`
 2. AudioWorkletNode → 16kHz PCM Float32 chunk emit (예: 250ms 단위)
 3. VAD (간단한 RMS 임계값 + hangover) → speech segment 경계 결정
-4. STT Worker로 segment 전송
-5. Worker 내부: `pipeline('automatic-speech-recognition', model)` 호출
-   - `model`: 기본 `onnx-community/moonshine-tiny-ko-ONNX` → fallback `Xenova/whisper-base`, `Xenova/whisper-small`, `onnx-community/whisper-large-v3-turbo`
-   - `device`: `'webgpu'` 우선, 없으면 `'wasm'`
+4. 말이 계속 이어지면 10초마다 rolling segment 전송
+   - VAD silence가 없어도 `onFrameProcessed` frame을 모아 강제 flush
+   - 경계 단어 누락을 줄이기 위해 다음 segment에 300ms overlap 유지
+5. STT Worker로 segment 전송
+6. Worker 내부: `pipeline('automatic-speech-recognition', model)` 호출
+   - `model`: `onnx-community/moonshine-tiny-ko-ONNX` only
+   - `device`: `'wasm'` CPU
    - `language`: `'ko'` 기본, UI에서 변경 가능
    - `return_timestamps: 'word'`
-6. partial 결과는 segment 진행 중 emit, final은 segment 종료 시 emit
+7. final은 각 rolling segment 또는 speech end마다 emit
 
 ## 5. UI Layout
 - 데스크탑: 2단 그리드 (좌: live transcript, 우: structured notes editor)
@@ -120,12 +123,12 @@ type MeetingNote = {
 | Metric | Budget |
 |--------|--------|
 | First contentful paint | < 2s (1차 진입, no model) |
-| Model load (whisper-base) | < 30s on 50Mbps |
+| Model load (moonshine-tiny-ko) | < 30s on 50Mbps |
 | STT partial latency | < 1s on M1 MacBook |
 | Bundle JS gzip | < 500KB (모델 제외) |
 | Lighthouse PWA | ≥ 90 |
 
 ## 10. Open Questions (G002에서 확정)
-- Whisper 모델 변형 선택: base vs small vs large-v3-turbo 어느 것이 한국어 + 속도 균형 최적?
+- Moonshine WASM CPU가 목표 기기에서 충분한 실시간성을 내는지 확인
 - VAD: 자체 RMS 휴리스틱 vs `@ricky0123/vad-web` 라이브러리?
 - 화자 분리: G004에서 간단한 turn-taking 휴리스틱만 (긴 침묵 기준) → 향후 모델 검토

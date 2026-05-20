@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Privacy-first browser-local Korean meeting note maker (Whisper + supertonic-tts)",
+  "description": "Privacy-first browser-local Korean meeting note maker (Moonshine WASM + supertonic-tts)",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

@@ -1,8 +1,14 @@
 import { MicVAD } from '@ricky0123/vad-web';
 
+const SAMPLE_RATE = 16000;
+const MIN_CHUNK_SAMPLES = 4000;
+const MAX_CONTINUOUS_SPEECH_MS = 10_000;
+const PRE_ROLL_MS = 300;
+const ROLLING_OVERLAP_MS = 300;
+
 export type SpeechChunk = {
   pcm: Float32Array;
-  sampleRate: 16000;
+  sampleRate: typeof SAMPLE_RATE;
   startMs: number;
   endMs: number;
 };
@@ -22,6 +28,12 @@ export class MicCapture {
   private vad: MicVAD | null = null;
   private sessionStart = 0;
   private speechStartMs = 0;
+  private speechActive = false;
+  private recentFrames: Float32Array[] = [];
+  private recentSamples = 0;
+  private activeFrames: Float32Array[] = [];
+  private activeSamples = 0;
+  private unflushedSamples = 0;
   private startPromise: Promise<void> | null = null;
   private stopRequested = false;
 
@@ -36,6 +48,7 @@ export class MicCapture {
 
   private async _start(opts: MicCaptureOpts): Promise<void> {
     this.sessionStart = performance.now();
+    this.resetSpeechState();
     const vad = await MicVAD.new({
       // silero-vad runs at 16k; vad-web resamples mic input to 16k.
       // Defaults tuned to suppress Whisper hallucinations on short noise:
@@ -44,23 +57,13 @@ export class MicCapture {
       negativeSpeechThreshold: opts.negativeSpeechThreshold ?? 0.4,
       minSpeechFrames: opts.minSpeechFrames ?? 9,
       redemptionFrames: opts.redemptionFrames ?? 24,
+      submitUserSpeechOnPause: true,
+      onFrameProcessed: (_probs, frame) => this.onFrame(frame, opts),
       onSpeechStart: () => {
-        this.speechStartMs = performance.now() - this.sessionStart;
+        this.beginSpeech();
         opts.onSpeechStart?.();
       },
-      onSpeechEnd: (audio: Float32Array) => {
-        const endMs = performance.now() - this.sessionStart;
-        // Drop segments shorter than 250ms (16k * 0.25 = 4000 samples) —
-        // very short audio confuses Whisper, but Korean single syllables
-        // can be ~300ms so don't be too aggressive.
-        if (audio.length < 4000) return;
-        opts.onSpeechEnd({
-          pcm: audio,
-          sampleRate: 16000,
-          startMs: this.speechStartMs,
-          endMs,
-        });
-      },
+      onSpeechEnd: () => this.finishSpeech(opts),
       onVADMisfire: () => {
         // ignored — false positive, no callback needed
       },
@@ -99,4 +102,102 @@ export class MicCapture {
   get running(): boolean {
     return this.vad !== null;
   }
+
+  private onFrame(frame: Float32Array, opts: MicCaptureOpts): void {
+    this.appendRecent(frame);
+    if (!this.speechActive) return;
+    this.activeFrames.push(frame);
+    this.activeSamples += frame.length;
+    this.unflushedSamples += frame.length;
+    if (this.unflushedSamples >= msToSamples(MAX_CONTINUOUS_SPEECH_MS)) {
+      this.flushActive(opts, true);
+    }
+  }
+
+  private beginSpeech(): void {
+    this.speechActive = true;
+    this.activeFrames = this.recentFrames.slice();
+    this.activeSamples = this.recentSamples;
+    this.unflushedSamples = this.recentSamples;
+    this.speechStartMs = Math.max(
+      0,
+      performance.now() - this.sessionStart - samplesToMs(this.recentSamples),
+    );
+  }
+
+  private finishSpeech(opts: MicCaptureOpts): void {
+    if (!this.speechActive) return;
+    if (this.unflushedSamples >= MIN_CHUNK_SAMPLES) {
+      this.flushActive(opts, false, performance.now() - this.sessionStart);
+    }
+    this.resetSpeechState();
+  }
+
+  private flushActive(opts: MicCaptureOpts, keepOverlap: boolean, endMs?: number): void {
+    if (this.unflushedSamples < MIN_CHUNK_SAMPLES) return;
+    const chunkEndMs = endMs ?? this.speechStartMs + samplesToMs(this.activeSamples);
+    opts.onSpeechEnd({
+      pcm: concatFrames(this.activeFrames),
+      sampleRate: SAMPLE_RATE,
+      startMs: this.speechStartMs,
+      endMs: chunkEndMs,
+    });
+    if (!keepOverlap) return;
+    const tail = takeTailFrames(this.activeFrames, msToSamples(ROLLING_OVERLAP_MS));
+    this.activeFrames = tail.frames;
+    this.activeSamples = tail.samples;
+    this.unflushedSamples = 0;
+    this.speechStartMs = Math.max(0, chunkEndMs - samplesToMs(tail.samples));
+  }
+
+  private appendRecent(frame: Float32Array): void {
+    this.recentFrames.push(frame);
+    this.recentSamples += frame.length;
+    const maxSamples = msToSamples(PRE_ROLL_MS);
+    while (this.recentSamples > maxSamples && this.recentFrames.length > 1) {
+      const dropped = this.recentFrames.shift();
+      this.recentSamples -= dropped?.length ?? 0;
+    }
+  }
+
+  private resetSpeechState(): void {
+    this.speechActive = false;
+    this.recentFrames = [];
+    this.recentSamples = 0;
+    this.activeFrames = [];
+    this.activeSamples = 0;
+    this.unflushedSamples = 0;
+  }
+}
+
+function concatFrames(frames: Float32Array[]): Float32Array {
+  const total = frames.reduce((sum, frame) => sum + frame.length, 0);
+  const out = new Float32Array(total);
+  let offset = 0;
+  for (const frame of frames) {
+    out.set(frame, offset);
+    offset += frame.length;
+  }
+  return out;
+}
+
+function takeTailFrames(frames: Float32Array[], maxSamples: number): {
+  frames: Float32Array[];
+  samples: number;
+} {
+  const tail: Float32Array[] = [];
+  let samples = 0;
+  for (let i = frames.length - 1; i >= 0 && samples < maxSamples; i -= 1) {
+    tail.unshift(frames[i]);
+    samples += frames[i].length;
+  }
+  return { frames: tail, samples };
+}
+
+function msToSamples(ms: number): number {
+  return Math.round((ms / 1000) * SAMPLE_RATE);
+}
+
+function samplesToMs(samples: number): number {
+  return (samples / SAMPLE_RATE) * 1000;
 }

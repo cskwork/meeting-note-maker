@@ -433,7 +433,17 @@ export async function loadTextProcessor(onnxDir) {
 /**
  * Load ONNX model
  */
+const MODEL_CACHE = 'mnm-model-v1';
+
 async function fetchArrayBufferWithProgress(url, progressCallback = null) {
+    const cache = await openModelCache();
+    const cached = cache ? await cache.match(url) : null;
+    if (cached) {
+        const buffer = await cached.arrayBuffer();
+        progressCallback?.(buffer.byteLength, buffer.byteLength);
+        return buffer;
+    }
+
     const response = await fetch(url);
     if (!response.ok) {
         throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`);
@@ -443,10 +453,13 @@ async function fetchArrayBufferWithProgress(url, progressCallback = null) {
     if (!response.body) {
         const buffer = await response.arrayBuffer();
         progressCallback?.(buffer.byteLength, buffer.byteLength);
+        cacheModelBuffer(cache, url, buffer, response);
         return buffer;
     }
 
-    const reader = response.body.getReader();
+    const [progressStream, cacheStream] = response.body.tee();
+    cacheModelStream(cache, url, cacheStream, response);
+    const reader = progressStream.getReader();
     const chunks = [];
     let loaded = 0;
 
@@ -466,6 +479,35 @@ async function fetchArrayBufferWithProgress(url, progressCallback = null) {
     }
     progressCallback?.(loaded, total || loaded);
     return bytes.buffer;
+}
+
+async function openModelCache() {
+    if (typeof caches === 'undefined') return null;
+    try {
+        return await caches.open(MODEL_CACHE);
+    } catch {
+        return null;
+    }
+}
+
+function cacheModelStream(cache, url, stream, sourceResponse) {
+    if (!cache) return;
+    const response = new Response(stream, {
+        status: sourceResponse.status,
+        statusText: sourceResponse.statusText,
+        headers: sourceResponse.headers,
+    });
+    cache.put(url, response).catch(() => {});
+}
+
+function cacheModelBuffer(cache, url, buffer, sourceResponse) {
+    if (!cache) return;
+    const response = new Response(buffer.slice(0), {
+        status: sourceResponse.status,
+        statusText: sourceResponse.statusText,
+        headers: sourceResponse.headers,
+    });
+    cache.put(url, response).catch(() => {});
 }
 
 export async function loadOnnx(onnxPath, options, progressCallback = null) {

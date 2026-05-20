@@ -7,7 +7,7 @@
 
 ## Why
 사내 회의록을 위해 SaaS STT에 음성을 보내는 것이 곤란한 환경 (보안·프라이
-버시 우려)에서 사용한다. WebGPU + Whisper를 이용해 브라우저 안에서 직접
+버시 우려)에서 사용한다. Moonshine Korean WASM을 이용해 브라우저 안에서 직접
 한국어를 받아쓰고, 결과물을 표준 포맷으로 내보낸다. 하나의 정적 사이트로
 GitHub Pages에 배포되어 어디서든 켤 수 있다.
 
@@ -23,7 +23,7 @@ GitHub Pages에 배포되어 어디서든 켤 수 있다.
 
 ## Tech Stack
 Vite + React 18 + TypeScript + Tailwind · `@huggingface/transformers` v3
-(Whisper + WebGPU) · `@ricky0123/vad-web` · `cskwork/supertonic-tts` ·
+(`moonshine-tiny-ko-ONNX` + WASM CPU) · `@ricky0123/vad-web` · `cskwork/supertonic-tts` ·
 IndexedDB · GitHub Pages + Actions · PWA.
 
 ## Deployment

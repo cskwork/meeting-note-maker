@@ -25,14 +25,7 @@ const MODELS: { id: SttModelId; label: string; size: string }[] = [
   {
     id: 'onnx-community/moonshine-tiny-ko-ONNX',
     label: 'moonshine-tiny-ko (한국어 최적화)',
-    size: '27M params · WebGPU/WASM',
-  },
-  { id: 'Xenova/whisper-base', label: 'whisper-base (빠름)', size: '~80MB' },
-  { id: 'Xenova/whisper-small', label: 'whisper-small (균형)', size: '~250MB' },
-  {
-    id: 'onnx-community/whisper-large-v3-turbo',
-    label: 'whisper-large-v3-turbo (정확도)',
-    size: '~800MB · WebGPU 권장',
+    size: '27M params · WASM CPU',
   },
 ];
 
@@ -260,7 +253,8 @@ export function App() {
           </p>
         </header>
 
-        {statusMsg.toLowerCase().includes('wasm') && (
+        {modelId !== 'onnx-community/moonshine-tiny-ko-ONNX' &&
+          statusMsg.toLowerCase().includes('wasm') && (
           <div style={{ ...css.errorBar, background: '#fef3c7', color: '#92400e' }}>
             WebGPU를 사용할 수 없어 WASM으로 동작합니다. 추론이 5-10배 느려질 수 있습니다.
             Chrome/Edge 113+ 또는 Safari 26+ 권장.
