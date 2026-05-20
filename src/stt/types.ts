@@ -27,6 +27,7 @@ export type SttResult =
 
 export type SttWorkerInbound =
   | { kind: 'load'; modelId: SttModelId; language: SttLanguage }
+  | { kind: 'setLanguage'; language: SttLanguage }
   | {
       kind: 'transcribe';
       chunkId: string;

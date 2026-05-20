@@ -8,6 +8,7 @@ import { TranscriptView, type TranscriptLine } from './ui/TranscriptView';
 import { NotesEditor } from './ui/NotesEditor';
 import { ExportBar } from './ui/ExportBar';
 import { PlayButton } from './ui/PlayButton';
+import { WakeLockHolder } from './ui/wakeLock';
 import { structureTranscript } from './notes/structurer';
 import { emptyMeetingNote, type MeetingNote, type TranscriptChunk } from './notes/types';
 import {
@@ -51,11 +52,16 @@ export function App() {
 
   const sttRef = useRef<SttEngine | null>(null);
   const micRef = useRef<MicCapture | null>(null);
+  const wakeLockRef = useRef<WakeLockHolder>(new WakeLockHolder());
   const saveDraft = useMemo(() => makeDebouncedSaver(800), []);
   const saveChunkDraft = useMemo(() => makeDebouncedChunkSaver(1500), []);
 
   useEffect(() => saveDraft(note), [note, saveDraft]);
   useEffect(() => saveChunkDraft(chunks), [chunks, saveChunkDraft]);
+  // Propagate language changes to an already-loaded STT worker immediately.
+  useEffect(() => {
+    sttRef.current?.setLanguage(language);
+  }, [language]);
 
   useEffect(() => {
     return () => {
@@ -98,6 +104,7 @@ export function App() {
   const stopMic = useCallback(async () => {
     await micRef.current?.stop();
     micRef.current = null;
+    void wakeLockRef.current.release();
     setMicRunning(false);
     setStatus('ready');
   }, []);
@@ -128,6 +135,7 @@ export function App() {
         onError: (e) => setError(e.message),
       });
       micRef.current = mic;
+      void wakeLockRef.current.acquire();
       setMicRunning(true);
       setStatus('listening');
     } catch (e) {

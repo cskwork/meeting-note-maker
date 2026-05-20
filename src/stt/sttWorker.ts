@@ -115,6 +115,8 @@ self.onmessage = (e: MessageEvent<SttWorkerInbound>) => {
   const msg = e.data;
   if (msg.kind === 'load') {
     void load(msg.modelId, msg.language);
+  } else if (msg.kind === 'setLanguage') {
+    activeLanguage = msg.language;
   } else if (msg.kind === 'transcribe') {
     void transcribe(msg.chunkId, msg.pcm, msg.sampleRate, msg.startMs, msg.endMs);
   } else if (msg.kind === 'dispose') {

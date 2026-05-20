@@ -53,6 +53,10 @@ export class SttEngine {
     });
   }
 
+  setLanguage(language: SttLanguage): void {
+    if (this.worker) this.send({ kind: 'setLanguage', language });
+  }
+
   on(listener: SttListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
