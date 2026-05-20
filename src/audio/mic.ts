@@ -22,11 +22,21 @@ export class MicCapture {
   private vad: MicVAD | null = null;
   private sessionStart = 0;
   private speechStartMs = 0;
+  private startPromise: Promise<void> | null = null;
+  private stopRequested = false;
 
   async start(opts: MicCaptureOpts): Promise<void> {
-    if (this.vad) throw new Error('Already started');
+    if (this.vad || this.startPromise) return this.startPromise ?? Promise.resolve();
+    this.stopRequested = false;
+    this.startPromise = this._start(opts).finally(() => {
+      this.startPromise = null;
+    });
+    return this.startPromise;
+  }
+
+  private async _start(opts: MicCaptureOpts): Promise<void> {
     this.sessionStart = performance.now();
-    this.vad = await MicVAD.new({
+    const vad = await MicVAD.new({
       // silero-vad runs at 16k; vad-web resamples mic input to 16k.
       // Defaults tuned to suppress Whisper hallucinations on short noise:
       // longer minSpeechFrames and tighter thresholds reject coughs/clicks/breath.
@@ -55,15 +65,31 @@ export class MicCapture {
         // ignored — false positive, no callback needed
       },
     });
+    // If stop() arrived during the awaited MicVAD.new, honor it now.
+    if (this.stopRequested) {
+      vad.pause();
+      vad.destroy();
+      return;
+    }
+    this.vad = vad;
     try {
       this.vad.start();
     } catch (e) {
-      opts.onError?.(e instanceof Error ? e : new Error(String(e)));
-      throw e;
+      this.vad = null;
+      vad.destroy();
+      const err = e instanceof Error ? e : new Error(String(e));
+      opts.onError?.(err);
+      throw err;
     }
   }
 
   async stop(): Promise<void> {
+    this.stopRequested = true;
+    try {
+      await this.startPromise;
+    } catch {
+      // start() already failed and surfaced its own error
+    }
     if (!this.vad) return;
     this.vad.pause();
     this.vad.destroy();

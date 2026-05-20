@@ -7,21 +7,50 @@ import type {
   SttWorkerOutbound,
 } from './types';
 
-type AsrFn = (
-  input: Float32Array,
-  opts?: Record<string, unknown>,
-) => Promise<{ text: string } | { text: string }[]>;
+// transformers.js v3 returns a huge union for `pipeline('automatic-speech-
+// recognition', ...)`. We only call it as a function with (audio, opts) and
+// only read `.text` off the result, so we narrow to that exact contract via
+// a single explicit cast at call sites — not three layers of unknown.
+type AsrPipelineOptions = {
+  task?: 'transcribe' | 'translate';
+  language?: SttLanguage | string;
+  return_timestamps?: boolean | 'word';
+  temperature?: number;
+  no_repeat_ngram_size?: number;
+  condition_on_previous_text?: boolean;
+  no_speech_threshold?: number;
+  compression_ratio_threshold?: number;
+  logprob_threshold?: number;
+};
 
-let recognizer: AsrFn | null = null;
+interface AsrPipeline {
+  (input: Float32Array, opts?: AsrPipelineOptions): Promise<
+    { text: string } | { text: string }[]
+  >;
+}
+
+interface AsrPipelineFactoryOpts {
+  device: 'webgpu' | 'wasm';
+  dtype: 'fp16' | 'fp32';
+  progress_callback?: (p: unknown) => void;
+}
+
+type PipelineFn = (
+  task: 'automatic-speech-recognition',
+  model: string,
+  opts: AsrPipelineFactoryOpts,
+) => Promise<AsrPipeline>;
+
+let recognizer: AsrPipeline | null = null;
 let activeLanguage: SttLanguage = 'ko';
 
 const post = (msg: SttWorkerOutbound) => (self as DedicatedWorkerGlobalScope).postMessage(msg);
 
 async function detectDevice(): Promise<'webgpu' | 'wasm'> {
-  const gpu = (navigator as Navigator & { gpu?: unknown }).gpu;
+  const gpu = (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu;
   if (!gpu) return 'wasm';
   try {
-    const adapter = await (gpu as { requestAdapter: () => Promise<unknown> }).requestAdapter();
+    const adapter = await gpu.requestAdapter();
     return adapter ? 'webgpu' : 'wasm';
   } catch {
     return 'wasm';
@@ -32,7 +61,7 @@ async function load(modelId: SttModelId, language: SttLanguage) {
   post({ type: 'status', status: 'loading', message: `Loading ${modelId}...` });
   activeLanguage = language;
   const device = await detectDevice();
-  const opts = {
+  const factory: AsrPipelineFactoryOpts = {
     device,
     dtype: device === 'webgpu' ? 'fp16' : 'fp32',
     progress_callback: (p: unknown) => {
@@ -45,12 +74,14 @@ async function load(modelId: SttModelId, language: SttLanguage) {
         });
       }
     },
-  } as unknown as Record<string, unknown>;
-  recognizer = (await (pipeline as unknown as (
-    task: string,
-    model: string,
-    opts: unknown,
-  ) => Promise<AsrFn>)('automatic-speech-recognition', modelId, opts));
+  };
+  // Single narrow cast: pipeline's published type signature is a giant union
+  // we don't need. We only invoke it through AsrPipeline.
+  recognizer = await (pipeline as unknown as PipelineFn)(
+    'automatic-speech-recognition',
+    modelId,
+    factory,
+  );
   post({ type: 'status', status: 'ready', message: `Loaded (${device})` });
 }
 
@@ -71,7 +102,7 @@ async function transcribe(
     // pipeline. Whisper-base on Korean is prone to outputting "- - - -",
     // ellipses, or repeated tokens on silence/noise. The thresholds + greedy
     // temperature + no-prompt-conditioning make the worst cases far rarer.
-    const opts: Record<string, unknown> = {
+    const opts: AsrPipelineOptions = {
       task: 'transcribe',
       return_timestamps: false,
       temperature: 0,
@@ -82,7 +113,7 @@ async function transcribe(
       logprob_threshold: -1.0,
     };
     if (activeLanguage !== 'auto') opts.language = activeLanguage;
-    const out = (await recognizer(pcm, opts)) as { text: string } | { text: string }[];
+    const out = await recognizer(pcm, opts);
     const rawText = (Array.isArray(out) ? out[0]?.text : out.text) ?? '';
     const cleaned = scrubHallucination(rawText);
     if (cleaned) {
@@ -93,6 +124,10 @@ async function transcribe(
     post({ type: 'error', error: e instanceof Error ? e.message : String(e) });
   }
 }
+
+// Exported for the scrub-fixture unit test in scripts/verify-scrub.mjs.
+// Kept in this file to ensure the test runs against the actual code path.
+export { scrubHallucination };
 
 // Whisper's classic failure modes on Korean + small models:
 //   1. Silence -> "- - - -" or "..." or pure punctuation

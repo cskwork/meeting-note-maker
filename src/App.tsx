@@ -17,6 +17,7 @@ import {
   loadDraft,
   makeDebouncedChunkSaver,
   makeDebouncedSaver,
+  onStorageQuotaError,
 } from './notes/storage';
 import { loadPrefs, savePrefs } from './notes/prefs';
 
@@ -57,9 +58,32 @@ export function App() {
   const wakeLockRef = useRef<WakeLockHolder>(new WakeLockHolder());
   const saveDraft = useMemo(() => makeDebouncedSaver(800), []);
   const saveChunkDraft = useMemo(() => makeDebouncedChunkSaver(1500), []);
+  const hasHydratedRef = useRef(false);
 
-  useEffect(() => saveDraft(note), [note, saveDraft]);
-  useEffect(() => saveChunkDraft(chunks), [chunks, saveChunkDraft]);
+  // Skip the first save right after hydration — the value matches what we
+  // just loaded, so writing it back is pure noise.
+  useEffect(() => {
+    if (!hasHydratedRef.current) {
+      hasHydratedRef.current = true;
+      return;
+    }
+    saveDraft(note);
+  }, [note, saveDraft]);
+  useEffect(() => {
+    if (!hasHydratedRef.current) return;
+    saveChunkDraft(chunks);
+  }, [chunks, saveChunkDraft]);
+
+  // Surface localStorage quota errors so the user sees them instead of
+  // silently losing their draft on a write that exceeded the 5MB origin cap.
+  useEffect(() => {
+    return onStorageQuotaError((err) => {
+      setError(
+        `자동 저장 실패: ${err.message}. 브라우저 저장공간이 가득 찼습니다. ` +
+          '"회의록 전체 초기화" 또는 사이트 데이터 삭제 후 다시 시도하세요.',
+      );
+    });
+  }, []);
   // Propagate language changes to an already-loaded STT worker immediately
   // and persist the selection so it survives reload.
   useEffect(() => {
@@ -224,6 +248,13 @@ export function App() {
             오디오는 브라우저 안에서만 처리됩니다. 서버로 전송되지 않습니다.
           </p>
         </header>
+
+        {statusMsg.toLowerCase().includes('wasm') && (
+          <div style={{ ...css.errorBar, background: '#fef3c7', color: '#92400e' }}>
+            WebGPU를 사용할 수 없어 WASM으로 동작합니다. 추론이 5-10배 느려질 수 있습니다.
+            Chrome/Edge 113+ 또는 Safari 26+ 권장.
+          </div>
+        )}
 
         <section style={css.controlBar}>
           <label style={css.field}>
