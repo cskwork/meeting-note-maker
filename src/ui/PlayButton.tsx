@@ -3,6 +3,7 @@ import type { MeetingNote } from '../notes/types';
 import type { TtsCapability, TtsEngine, TtsEngineId } from '../tts/types';
 import { detectCapabilities, makeEngine } from '../tts/engine';
 import { SupertonicTts } from '../tts/supertonic';
+import { loadPrefs, savePrefs } from '../notes/prefs';
 import { css, colors } from './styles';
 
 function plainTextOf(note: MeetingNote): string {
@@ -20,10 +21,12 @@ function plainTextOf(note: MeetingNote): string {
 
 export function PlayButton({ note }: { note: MeetingNote }) {
   const [caps, setCaps] = useState<TtsCapability[]>([]);
-  // Default to supertonic so the high-quality model starts downloading
-  // immediately on first visit. Subsequent visits hit the SW model cache.
-  const [engineId, setEngineId] = useState<TtsEngineId>('supertonic');
-  const [voiceId, setVoiceId] = useState<string>('F1');
+  // Defaults come from persisted prefs (falls back to supertonic + F1) so the
+  // user's last TTS engine + voice survives reload. On first visit this still
+  // starts the supertonic download because that's the default.
+  const initialPrefs = useState(() => loadPrefs())[0];
+  const [engineId, setEngineId] = useState<TtsEngineId>(initialPrefs.ttsEngineId);
+  const [voiceId, setVoiceId] = useState<string>(initialPrefs.ttsVoiceId);
   const [playing, setPlaying] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,11 +57,9 @@ export function PlayButton({ note }: { note: MeetingNote }) {
 
   useEffect(() => {
     detectCapabilities().then(setCaps);
-    // Kick off supertonic-tts model download on mount so the heavy ~380MB
-    // weights start streaming while the user reads the page. First-time
-    // download silently primes the SW cache; if anything fails the user can
-    // still pick Web Speech from the engine selector.
-    void ensureEngine('supertonic').catch((e) => {
+    // Auto-init whichever engine the user last picked (default supertonic).
+    // First-time supertonic load streams ~380MB from HF and primes SW cache.
+    void ensureEngine(initialPrefs.ttsEngineId).catch((e) => {
       setLoadingMsg(null);
       setError(e instanceof Error ? e.message : String(e));
     });
@@ -66,6 +67,13 @@ export function PlayButton({ note }: { note: MeetingNote }) {
     // ensureEngine intentionally not in deps — we only auto-init once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    savePrefs({ ttsEngineId: engineId });
+  }, [engineId]);
+  useEffect(() => {
+    savePrefs({ ttsVoiceId: voiceId });
+  }, [voiceId]);
 
   const onPlay = useCallback(async () => {
     setError(null);

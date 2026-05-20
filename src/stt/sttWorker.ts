@@ -94,14 +94,22 @@ async function transcribe(
   }
 }
 
-// Drop strings that are only punctuation, dashes, ellipses, or repeated
-// single characters — these are Whisper's classic silence-hallucinations.
+// Whisper's classic failure modes on Korean + small models:
+//   1. Silence -> "- - - -" or "..." or pure punctuation
+//   2. Repetition trap -> "뭐 뭐 뭐 뭐 뭣 뭢 뭉 ..." (same syllable explored)
+//   3. Tokenizer leak -> "�" replacement chars and stray English fragments
+// Strategy: strip replacement chars, then truncate at the first detectable
+// degeneration boundary, then reject if what's left is just noise.
 function scrubHallucination(text: string): string {
-  const t = text.trim();
+  let t = text.replace(/�/g, '').trim();
   if (!t) return '';
-  // Only punctuation / whitespace / dashes / dots / ellipses
+
+  t = truncateAtRepetitionLoop(t);
+
+  if (!t) return '';
+  // Pure punctuation / dashes / dots
   if (/^[\s\-—–·.…,!?。、ㆍ"'`()<>「」『』]+$/u.test(t)) return '';
-  // Mostly a single repeated character (e.g. "ㅋㅋㅋㅋㅋㅋㅋㅋ" or "----")
+  // Mostly a single repeated character (e.g. "ㅋㅋㅋㅋㅋㅋ" or "----")
   const compact = t.replace(/\s+/g, '');
   if (compact.length >= 4) {
     const firstChar = compact[0];
@@ -109,6 +117,59 @@ function scrubHallucination(text: string): string {
     if (sameRatio >= 0.9) return '';
   }
   return t;
+}
+
+/**
+ * Detect Whisper's repetition trap and cut the output at its onset.
+ * The loops we see in Korean are:
+ *   - Same word repeated 4+ times: "뭐 뭐 뭐 뭐"
+ *   - Many short tokens sharing the same first syllable: "뭐 뭣 뭢 뭉 뭈 뭃"
+ *   - English filler bursts after Korean: "the the the the"
+ */
+function truncateAtRepetitionLoop(text: string): string {
+  const tokens = text.split(/\s+/);
+  if (tokens.length < 4) return text;
+
+  // (a) exact same word 4 times in a row
+  for (let i = 0; i + 3 < tokens.length; i++) {
+    const a = stripPunct(tokens[i]);
+    if (!a) continue;
+    if (
+      stripPunct(tokens[i + 1]) === a &&
+      stripPunct(tokens[i + 2]) === a &&
+      stripPunct(tokens[i + 3]) === a
+    ) {
+      return tokens.slice(0, i).join(' ').trim();
+    }
+  }
+
+  // (b) sliding window of 6 tokens — if 5+ start with the same character
+  // (1-syllable Korean exploration), cut at the window start
+  const WIN = 6;
+  const THRESHOLD = 5;
+  for (let i = 0; i + WIN <= tokens.length; i++) {
+    const window = tokens.slice(i, i + WIN).map(stripPunct).filter(Boolean);
+    if (window.length < THRESHOLD) continue;
+    const firsts = window.map((w) => [...w][0]);
+    const top = mostCommon(firsts);
+    if (top.count >= THRESHOLD) {
+      return tokens.slice(0, i).join(' ').trim();
+    }
+  }
+
+  return text;
+}
+
+function stripPunct(s: string): string {
+  return s.replace(/[.!?,;:、。…·"'`()<>「」『』]/gu, '');
+}
+
+function mostCommon(arr: string[]): { ch: string; count: number } {
+  const m = new Map<string, number>();
+  for (const c of arr) m.set(c, (m.get(c) ?? 0) + 1);
+  let best = { ch: '', count: 0 };
+  for (const [ch, count] of m) if (count > best.count) best = { ch, count };
+  return best;
 }
 
 self.onmessage = (e: MessageEvent<SttWorkerInbound>) => {

@@ -18,6 +18,7 @@ import {
   makeDebouncedChunkSaver,
   makeDebouncedSaver,
 } from './notes/storage';
+import { loadPrefs, savePrefs } from './notes/prefs';
 
 const MODELS: { id: SttModelId; label: string; size: string }[] = [
   { id: 'Xenova/whisper-base', label: 'whisper-base (빠름)', size: '~80MB' },
@@ -38,8 +39,9 @@ const LANGUAGES: { id: SttLanguage; label: string }[] = [
 type Tab = 'transcript' | 'notes';
 
 export function App() {
-  const [modelId, setModelId] = useState<SttModelId>('Xenova/whisper-base');
-  const [language, setLanguage] = useState<SttLanguage>('ko');
+  const initialPrefs = useMemo(() => loadPrefs(), []);
+  const [modelId, setModelId] = useState<SttModelId>(initialPrefs.sttModelId);
+  const [language, setLanguage] = useState<SttLanguage>(initialPrefs.sttLanguage);
   const [status, setStatus] = useState<SttStatus>('idle');
   const [statusMsg, setStatusMsg] = useState<string>('');
   const [chunks, setChunks] = useState<TranscriptChunk[]>(() => loadChunks());
@@ -58,10 +60,15 @@ export function App() {
 
   useEffect(() => saveDraft(note), [note, saveDraft]);
   useEffect(() => saveChunkDraft(chunks), [chunks, saveChunkDraft]);
-  // Propagate language changes to an already-loaded STT worker immediately.
+  // Propagate language changes to an already-loaded STT worker immediately
+  // and persist the selection so it survives reload.
   useEffect(() => {
     sttRef.current?.setLanguage(language);
+    savePrefs({ sttLanguage: language });
   }, [language]);
+  useEffect(() => {
+    savePrefs({ sttModelId: modelId });
+  }, [modelId]);
 
   useEffect(() => {
     return () => {
@@ -76,9 +83,16 @@ export function App() {
       setStatusMsg(r.message ?? '');
       if (r.status === 'ready') setModelLoaded(true);
     } else if (r.type === 'final') {
+      // Guard: never accept an empty / whitespace-only final — keeps the UI
+      // from showing phantom timestamp rows even if a worker scrub regresses.
+      const text = r.text?.trim() ?? '';
+      if (!text) {
+        setPartialLine(null);
+        return;
+      }
       setChunks((prev) => [
         ...prev,
-        { id: r.chunkId, text: r.text, startMs: r.startMs, endMs: r.endMs },
+        { id: r.chunkId, text, startMs: r.startMs, endMs: r.endMs },
       ]);
       setPartialLine(null);
     } else if (r.type === 'partial') {

@@ -46,7 +46,11 @@ export function loadChunks(): TranscriptChunk[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed;
+    // Drop chunks with empty/whitespace text (legacy data from before the
+    // hallucination scrub landed could leave phantom timestamp-only rows).
+    return parsed.filter(
+      (c) => c && typeof c.text === 'string' && c.text.trim().length > 0,
+    );
   } catch {
     return [];
   }

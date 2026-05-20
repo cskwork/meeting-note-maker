@@ -40,9 +40,10 @@ export class MicCapture {
       },
       onSpeechEnd: (audio: Float32Array) => {
         const endMs = performance.now() - this.sessionStart;
-        // Drop segments shorter than 500ms (16k * 0.5 = 8000 samples) —
-        // Whisper hallucinates badly on very short audio.
-        if (audio.length < 8000) return;
+        // Drop segments shorter than 250ms (16k * 0.25 = 4000 samples) —
+        // very short audio confuses Whisper, but Korean single syllables
+        // can be ~300ms so don't be too aggressive.
+        if (audio.length < 4000) return;
         opts.onSpeechEnd({
           pcm: audio,
           sampleRate: 16000,

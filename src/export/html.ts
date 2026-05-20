@@ -63,16 +63,49 @@ export function toHtml(note: MeetingNote, opts: { autoPrint?: boolean } = {}): s
   h2 { margin: 32px 0 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
   h3 { margin: 16px 0 4px; color: #1e293b; }
   ul { margin: 4px 0 12px; padding-left: 22px; }
+  li { margin: 2px 0; }
   .meta { color: #64748b; font-size: 13px; margin-left: 6px; }
   .actions .check { list-style: none; padding-left: 0; }
   .actions .check li { padding: 4px 0; }
   details { margin-top: 32px; }
   summary { cursor: pointer; color: #64748b; }
+  details[open] > summary { margin-bottom: 8px; }
   code { background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
   header ul { list-style: none; padding-left: 0; color: #475569; }
+
+  /* --- Print pagination --- */
+  @page {
+    size: A4;
+    margin: 18mm 15mm 20mm 15mm;
+  }
   @media print {
-    body { margin: 0; }
-    details { display: none; }
+    body { margin: 0; max-width: none; padding: 0; font-size: 11pt; line-height: 1.5; }
+    /* Keep section headers attached to their content */
+    h1, h2, h3 { break-after: avoid-page; page-break-after: avoid; }
+    /* Don't split individual agenda sections / action items mid-page */
+    section.agenda, .actions li, header ul { break-inside: avoid; page-break-inside: avoid; }
+    /* Long bullets: avoid splitting a single bullet across pages */
+    ul li { break-inside: avoid; page-break-inside: avoid; }
+    /* Transcript appendix starts on a new page and uses smaller type */
+    details.transcript {
+      break-before: page;
+      page-break-before: always;
+      margin-top: 0;
+      font-size: 9.5pt;
+      line-height: 1.4;
+    }
+    details.transcript[open] > summary,
+    details.transcript > summary {
+      display: list-item;
+      font-weight: 700;
+      color: #0f172a;
+      list-style: none;
+    }
+    /* Force the appendix open in print so it shows even if collapsed on screen */
+    details.transcript ol { display: block !important; }
+    details.transcript ol li { break-inside: avoid; }
+    /* Suppress browser-injected header/footer URL via @page; user can also
+       disable "Headers and footers" in the print dialog. */
   }
 </style>
 </head>
@@ -86,7 +119,7 @@ export function toHtml(note: MeetingNote, opts: { autoPrint?: boolean } = {}): s
 </header>
 ${note.agenda.length ? `<h2>안건</h2>${agenda}` : ''}
 ${actions}
-${transcript}
+${transcript ? transcript.replace('<details class="transcript">', '<details class="transcript" open>') : ''}
 ${opts.autoPrint ? '<script>window.addEventListener("load", () => window.print());</script>' : ''}
 </body>
 </html>`;
