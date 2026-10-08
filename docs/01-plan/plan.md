@@ -29,7 +29,7 @@
 
 ## 4. Stakeholders
 - **Primary user**: 기업의 회의 진행자 / 서기 (한국어 회의)
-- **Owner**: Danny (`platformdev03@dong-a.com`)
+- **Owner**: cskwork (`[private contact redacted; use GitHub profile]`)
 - **Reviewers**: bkit code-analyzer, design-validator, gap-detector
 
 ## 5. Constraints
